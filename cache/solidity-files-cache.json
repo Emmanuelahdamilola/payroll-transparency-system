@@ -1,4 +1,40 @@
 {
   "_format": "hh-sol-cache-2",
-  "files": {}
+  "files": {
+    "C:\\Users\\USER\\Documents\\payroll-transparency-system\\backend\\contracts\\StaffRegistry.sol": {
+      "lastModificationDate": 1764141185047,
+      "contentHash": "c269198cf1478ccd2ba82b406e298cce",
+      "sourceName": "contracts/StaffRegistry.sol",
+      "solcConfig": {
+        "version": "0.8.19",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.19"
+      ],
+      "artifacts": [
+        "StaffRegistry"
+      ]
+    }
+  }
 }

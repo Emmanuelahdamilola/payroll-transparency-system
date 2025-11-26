@@ -9,6 +9,7 @@ import connectDatabase from './config/database';
 // Import routes
 import authRoutes from './routes/authRoutes';
 import testRoutes from './routes/testRoutes';
+import staffRoutes from './routes/staffRoutes'
 
 // Create Express app
 const app = express();
@@ -50,6 +51,7 @@ app.get('/health', (req: Request, res: Response) => {
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/test', testRoutes);
+app.use('/api/staff', staffRoutes)
 
 // 404 handler
 app.use((req: Request, res: Response) => {

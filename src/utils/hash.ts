@@ -10,6 +10,17 @@ export const sha256Hash = (input: string): string => {
 /**
  * Generate deterministic staff hash from staff data
  * Order matters! Don't change the concatenation order
+ * 
+ * Hash Generation Algorithm:
+ * 1. Normalize all inputs (lowercase, trim whitespace)
+ * 2. Concatenate in this exact order: name|dob|bvn|nin
+ * 3. Apply SHA-256 hash
+ * 
+ * @param name - Staff full name
+ * @param dob - Date of birth (format: YYYY-MM-DD)
+ * @param bvn - Bank Verification Number
+ * @param nin - National Identification Number
+ * @returns SHA-256 hash (64 hex characters)
  */
 export const generateStaffHash = (
   name: string,
@@ -18,14 +29,15 @@ export const generateStaffHash = (
   nin: string
 ): string => {
   // Normalize inputs (lowercase, trim whitespace)
-  const normalized = [
-    name.toLowerCase().trim(),
-    dob.trim(),
-    bvn.trim(),
-    nin.trim()
-  ].join('|');
-
-  return sha256Hash(normalized);
+  const normalizedName = name.toLowerCase().trim().replace(/\s+/g, ' ');
+  const normalizedDob = dob.trim();
+  const normalizedBvn = bvn.trim();
+  const normalizedNin = nin.trim();
+  
+  // Concatenate in exact order with pipe separator
+  const concatenated = `${normalizedName}|${normalizedDob}|${normalizedBvn}|${normalizedNin}`;
+  
+  return sha256Hash(concatenated);
 };
 
 /**
