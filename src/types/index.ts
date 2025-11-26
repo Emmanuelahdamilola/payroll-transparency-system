@@ -105,3 +105,4 @@ export interface BlockchainTxResult {
   gasUsed: string;
   status: boolean;
 }
+

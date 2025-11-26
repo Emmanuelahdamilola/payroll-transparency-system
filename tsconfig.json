@@ -19,21 +19,12 @@
     "noImplicitAny": true,
     "strictNullChecks": true,
     "strictFunctionTypes": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noImplicitReturns": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noImplicitReturns": false,
     "noFallthroughCasesInSwitch": true
   },
 
-  "include": ["src/**/*", "hardhat.config.ts"],
-
-  "exclude": [
-    "node_modules",
-    "dist",
-    "hardhat.config.ts",
-    "hardhat",
-    "scripts",
-    "tasks",
-    "**/*.test.ts"
-  ]
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts"]
 }

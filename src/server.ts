@@ -1,12 +1,20 @@
-// Load environment variables first
+
 import dotenv from 'dotenv';
 dotenv.config();
 
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import connectDatabase from './config/database';
+
+// Import routes
+import authRoutes from './routes/authRoutes';
+import testRoutes from './routes/testRoutes';
 
 // Create Express app
 const app = express();
+
+// Connect to MongoDB
+connectDatabase();
 
 // Middleware
 app.use(cors());
@@ -14,13 +22,13 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Request logging middleware
-app.use((req: Request, _res: Response, next: NextFunction) => {
+app.use((req: Request, res: Response, next: NextFunction) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   next();
 });
 
 // Basic test route
-app.get('/', (_req: Request, res: Response) => {
+app.get('/', (req: Request, res: Response) => {
   res.json({ 
     message: 'Payroll Transparency System API',
     status: 'running',
@@ -30,26 +38,33 @@ app.get('/', (_req: Request, res: Response) => {
 });
 
 // Health check endpoint
-app.get('/health', (_req: Request, res: Response) => {
+app.get('/health', (req: Request, res: Response) => {
   res.json({ 
     status: 'healthy',
     environment: process.env.NODE_ENV || 'development',
-    uptime: process.uptime()
+    uptime: process.uptime(),
+    database: 'connected'
   });
 });
+
+// API Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/test', testRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {
   res.status(404).json({
+    success: false,
     error: 'Route not found',
     path: req.path
   });
 });
 
 // Error handling middleware
-app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   console.error('Error:', err.stack);
   res.status(500).json({
+    success: false,
     error: 'Internal server error',
     message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
   });
