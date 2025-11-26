@@ -22,7 +22,9 @@
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^9.0.0"
+    "mongoose": "^9.0.0",
+    "multer": "^2.0.2",
+    "papaparse": "^5.5.3"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^6.1.0",
@@ -32,7 +34,9 @@
     "@types/express": "^5.0.5",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/mongoose": "^5.11.96",
+    "@types/multer": "^2.0.0",
     "@types/node": "^24.10.1",
+    "@types/papaparse": "^5.5.0",
     "hardhat": "^2.27.0",
     "nodemon": "^3.1.11",
     "ts-node": "^10.9.2",

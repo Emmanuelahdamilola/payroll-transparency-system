@@ -14,9 +14,9 @@ async function main() {
   
   const address = await staffRegistry.getAddress();
   
-  console.log("✅ StaffRegistry deployed successfully!");
-  console.log(`📍 Contract address: ${address}`);
-  console.log(`👤 Deployed by: ${await staffRegistry.owner()}`);
+  console.log("StaffRegistry deployed successfully!");
+  console.log(`Contract address: ${address}`);
+  console.log(`Deployed by: ${await staffRegistry.owner()}`);
   
   // Save deployment info
   const deploymentInfo = {
@@ -26,10 +26,10 @@ async function main() {
     timestamp: new Date().toISOString()
   };
   
-  console.log("\n📝 Deployment Info:");
+  console.log("\nDeployment Info:");
   console.log(JSON.stringify(deploymentInfo, null, 2));
   
-  console.log("\n💡 Add this to your .env file:");
+  console.log("\nAdd this to your .env file:");
   console.log(`CONTRACT_ADDRESS=${address}`);
 }
 
