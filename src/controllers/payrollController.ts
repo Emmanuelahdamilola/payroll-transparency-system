@@ -4,8 +4,11 @@ import PayrollBatch from '../models/PayrollBatch';
 import Staff from '../models/Staff';
 import { generateBatchHash } from '../utils/hash';
 import { recordPayrollBatchOnChain } from '../services/blockchainService';
+import { runAIDetection } from '../services/aiDetectionService';
+import { generateBatchSummary } from '../services/groqService';
 import fs from 'fs';
 import Papa from 'papaparse';
+import mongoose from 'mongoose';
 
 interface CSVRow {
   staffhash?: string;
@@ -194,6 +197,46 @@ export const uploadPayroll = async (req: AuthRequest, res: Response): Promise<vo
 
     console.log(`✅ Payroll batch created: ${payrollBatch._id}`);
 
+    // Run AI Detection
+    console.log('🤖 Starting AI anomaly detection...');
+    const detectionResult = await runAIDetection(
+      payrollBatch._id.toString(),
+      payrollRecords
+    );
+
+    // Update payroll records with flag references
+    for (const flag of detectionResult.flags) {
+      const recordIndex = payrollBatch.payrollRecords.findIndex(
+        (r) => r.staffHash === flag.staffHash
+      );
+      if (recordIndex !== -1) {
+        payrollBatch.payrollRecords[recordIndex].flags.push(flag._id as mongoose.Types.ObjectId);
+        if (payrollBatch.payrollRecords[recordIndex].status === 'pending') {
+          payrollBatch.payrollRecords[recordIndex].status = 'flagged';
+        }
+      }
+    }
+
+    // Update flagged count
+    payrollBatch.flaggedCount = detectionResult.summary.totalFlags;
+    await payrollBatch.save();
+
+    console.log(`✅ AI detection complete: ${detectionResult.summary.totalFlags} flags created`);
+
+    // Generate AI summary
+    const aiSummary = await generateBatchSummary({
+      totalStaff: payrollBatch.totalStaff,
+      totalAmount: payrollBatch.totalAmount,
+      flaggedCount: detectionResult.summary.totalFlags,
+      ghostWorkers: detectionResult.summary.ghostWorkers,
+      duplicates: detectionResult.summary.duplicates,
+      salaryAnomalies: detectionResult.summary.salaryAnomalies,
+      month: payrollBatch.month,
+      year: payrollBatch.year,
+    });
+
+    console.log(`🤖 AI Summary: ${aiSummary}`);
+
     // Record on blockchain
     try {
       const blockchainTx = await recordPayrollBatchOnChain(
@@ -229,7 +272,9 @@ export const uploadPayroll = async (req: AuthRequest, res: Response): Promise<vo
         blockchainTx: payrollBatch.blockchainTx,
         month: payrollBatch.month,
         year: payrollBatch.year,
-        createdAt: payrollBatch.createdAt
+        createdAt: payrollBatch.createdAt,
+        detectionSummary: detectionResult.summary,
+        aiSummary: aiSummary
       },
       timestamp: new Date().toISOString()
     });
