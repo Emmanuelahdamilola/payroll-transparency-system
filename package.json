@@ -1,7 +1,7 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "description": "",
+  "description": "Payroll Transparency System with Stellar Integration",
   "main": "index.js",
   "scripts": {
     "build": "tsc",
@@ -11,23 +11,30 @@
     "lint": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
-  "keywords": [],
+  "keywords": [
+    "stellar",
+    "soroban",
+    "blockchain",
+    "payroll"
+  ],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@stellar/stellar-sdk": "^12.3.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "crypto-js": "^4.2.0",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
+    "groq-sdk": "^0.37.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^9.0.0",
     "multer": "^2.0.2",
-    "papaparse": "^5.5.3"
+    "papaparse": "^5.5.3",
+    "string-similarity": "^4.0.4"
   },
   "devDependencies": {
-    "@nomicfoundation/hardhat-toolbox": "^6.1.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.19",
     "@types/crypto-js": "^4.2.2",
@@ -37,7 +44,7 @@
     "@types/multer": "^2.0.0",
     "@types/node": "^24.10.1",
     "@types/papaparse": "^5.5.0",
-    "hardhat": "^2.27.0",
+    "@types/string-similarity": "^4.0.2",
     "nodemon": "^3.1.11",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
