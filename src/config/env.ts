@@ -5,9 +5,11 @@ export const config: EnvConfig = {
   PORT: process.env.PORT || '5000',
   MONGODB_URI: process.env.MONGODB_URI || '',
   JWT_SECRET: process.env.JWT_SECRET || '',
-  OPENAI_API_KEY: process.env.OPENAI_API_KEY,
-  ETHEREUM_RPC_URL: process.env.ETHEREUM_RPC_URL || 'http://localhost:8545',
-  ETHEREUM_PRIVATE_KEY: process.env.ETHEREUM_PRIVATE_KEY || '',
+  GROQ_API_KEY: process.env.GROQ_API_KEY,
+  STELLAR_NETWORK: (process.env.STELLAR_NETWORK as 'TESTNET' | 'MAINNET' | 'FUTURENET') || 'TESTNET',
+  STELLAR_RPC_URL: process.env.STELLAR_RPC_URL || 'https://soroban-testnet.stellar.org',
+  STELLAR_SECRET_KEY: process.env.STELLAR_SECRET_KEY || '',
+  SOROBAN_CONTRACT_ID: process.env.SOROBAN_CONTRACT_ID || '',
   NODE_ENV: (process.env.NODE_ENV as 'development' | 'production' | 'test') || 'development'
 };
 
@@ -16,8 +18,8 @@ export const validateEnv = (): void => {
   const required: (keyof EnvConfig)[] = [
     'MONGODB_URI',
     'JWT_SECRET',
-    'ETHEREUM_RPC_URL',
-    'ETHEREUM_PRIVATE_KEY'
+    'STELLAR_RPC_URL',
+    'STELLAR_SECRET_KEY'
   ];
 
   const missing = required.filter(key => !config[key]);
