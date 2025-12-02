@@ -1,0 +1,9 @@
+C:\Users\USER\Documents\Ekiti-msme-project\payroll-transparency-system-stellar\backend\soroban-contracts\staff-registry\target\release\deps\soroban_spec_rust-865b449b3147b056.d: C:\Users\USER\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-spec-rust-20.5.0\src\lib.rs C:\Users\USER\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-spec-rust-20.5.0\src\trait.rs C:\Users\USER\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-spec-rust-20.5.0\src\types.rs
+
+C:\Users\USER\Documents\Ekiti-msme-project\payroll-transparency-system-stellar\backend\soroban-contracts\staff-registry\target\release\deps\libsoroban_spec_rust-865b449b3147b056.rlib: C:\Users\USER\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-spec-rust-20.5.0\src\lib.rs C:\Users\USER\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-spec-rust-20.5.0\src\trait.rs C:\Users\USER\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-spec-rust-20.5.0\src\types.rs
+
+C:\Users\USER\Documents\Ekiti-msme-project\payroll-transparency-system-stellar\backend\soroban-contracts\staff-registry\target\release\deps\libsoroban_spec_rust-865b449b3147b056.rmeta: C:\Users\USER\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-spec-rust-20.5.0\src\lib.rs C:\Users\USER\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-spec-rust-20.5.0\src\trait.rs C:\Users\USER\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-spec-rust-20.5.0\src\types.rs
+
+C:\Users\USER\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-spec-rust-20.5.0\src\lib.rs:
+C:\Users\USER\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-spec-rust-20.5.0\src\trait.rs:
+C:\Users\USER\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-spec-rust-20.5.0\src\types.rs:

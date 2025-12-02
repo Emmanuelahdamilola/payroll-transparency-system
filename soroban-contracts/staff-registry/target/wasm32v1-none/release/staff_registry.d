@@ -1,0 +1,1 @@
+C:\Users\USER\Documents\Ekiti-msme-project\payroll-transparency-system-stellar\backend\soroban-contracts\staff-registry\target\wasm32v1-none\release\staff_registry.wasm: C:\Users\USER\Documents\Ekiti-msme-project\payroll-transparency-system-stellar\backend\soroban-contracts\staff-registry\src\lib.rs
