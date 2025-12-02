@@ -165,8 +165,7 @@ Tests include:
 | Role                     | Responsibilities                                                                                                                                          |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Frontend Developer       | Build Admin & Auditor dashboards, integrate API calls, display blockchain proofs and AI flags, make UI responsive.                                        |
-| Backend Developer        | Create API endpoints, handle encryption & hashing of PII, integrate Stellar smart contracts, manage payroll batch uploads, implement AI anomaly workflow. |
-| Data/AI Analyst          | Design anomaly detection model, run AI verification on payroll data, generate explanations for flagged records, maintain performance metrics.             |
+| Backend Developer        | Create API endpoints, handle encryption & hashing of PII, integrate Stellar smart contracts, manage payroll batch uploads, implement AI anomaly workflow. Design anomaly detection model, run AI verification on payroll data, generate explanations for flagged records, maintain performance metrics.             |
 | Cybersecurity Specialist | Ensure secure PII storage, secure API & blockchain interaction, implement access controls, conduct security audits.                                       |
 
 ---
