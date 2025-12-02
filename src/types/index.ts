@@ -5,9 +5,11 @@ export interface EnvConfig {
   PORT: string;
   MONGODB_URI: string;
   JWT_SECRET: string;
-  OPENAI_API_KEY?: string;
-  ETHEREUM_RPC_URL: string;
-  ETHEREUM_PRIVATE_KEY: string;
+  GROQ_API_KEY?: string;
+  STELLAR_NETWORK: 'TESTNET' | 'MAINNET' | 'FUTURENET';
+  STELLAR_RPC_URL: string;
+  STELLAR_SECRET_KEY: string;
+  SOROBAN_CONTRACT_ID: string;
   NODE_ENV: 'development' | 'production' | 'test';
 }
 
@@ -98,11 +100,9 @@ export interface ApiResponse<T = any> {
   timestamp: string;
 }
 
-// Blockchain transaction result
-export interface BlockchainTxResult {
+// Stellar transaction result
+export interface StellarTxResult {
   transactionHash: string;
-  blockNumber: number;
-  gasUsed: string;
-  status: boolean;
+  ledger: number;
+  status: 'SUCCESS' | 'FAILED';
 }
-
