@@ -82,6 +82,7 @@
             font-size: 16px;
             cursor: pointer;
             transition: background 0.3s;
+            width: 100%;
         }
 
         button:hover {
@@ -97,6 +98,7 @@
             display: flex;
             gap: 10px;
             margin-bottom: 20px;
+            flex-wrap: wrap;
         }
 
         .tab {
@@ -154,6 +156,8 @@
             width: 100%;
             border-collapse: collapse;
             margin-top: 20px;
+            overflow-x: auto;
+            display: block;
         }
 
         th, td {
@@ -218,7 +222,31 @@
         }
 
         .hidden {
-            display: none;
+            display: none !important;
+        }
+
+        .connection-status {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+
+        .connection-status.online {
+            background: #4caf50;
+        }
+
+        .connection-status.offline {
+            background: #f44336;
+        }
+
+        code {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
         }
     </style>
 </head>
@@ -226,63 +254,87 @@
     <div class="container">
         <div class="header">
             <h1>🏛️ Ekiti Payroll Transparency System</h1>
-            <p class="subtitle">Blockchain-powered payroll verification dashboard</p>
+            <p class="subtitle">
+                <span class="connection-status" id="connectionStatus"></span>
+                Blockchain-powered payroll verification dashboard
+            </p>
         </div>
 
         <div id="loginSection" class="login-section">
-            <h2>Login</h2>
+            <h2>Admin Login</h2>
             <div id="loginError" class="error hidden"></div>
             <div class="input-group">
                 <label>Email</label>
-                <input type="email" id="email" placeholder="admin@ekiti.gov.ng">
+                <input type="email" id="email" placeholder="admin@ekiti.gov.ng" value="admin@ekiti.gov.ng">
             </div>
             <div class="input-group">
                 <label>Password</label>
-                <input type="password" id="password" placeholder="Enter password">
+                <input type="password" id="password" placeholder="Enter password" value="Admin123!">
             </div>
-            <button onclick="login()">Login</button>
+            <button onclick="login()" id="loginBtn">Login</button>
+            <p style="margin-top: 15px; color: #666; font-size: 14px;">
+                Default credentials: admin@ekiti.gov.ng / Admin123!
+            </p>
         </div>
 
         <div id="dashboard" class="hidden">
             <div class="tabs">
-                <div class="tab active" onclick="switchTab('overview')">Overview</div>
-                <div class="tab" onclick="switchTab('staff')">Staff</div>
-                <div class="tab" onclick="switchTab('payroll')">Payroll Batches</div>
-                <div class="tab" onclick="switchTab('logout')">Logout</div>
+                <div class="tab active" onclick="switchTab(event, 'overview')">Overview</div>
+                <div class="tab" onclick="switchTab(event, 'staff')">Staff Registry</div>
+                <div class="tab" onclick="switchTab(event, 'payroll')">Payroll Batches</div>
+                <div class="tab" onclick="switchTab(event, 'blockchain')">Blockchain Info</div>
+                <div class="tab" onclick="logout()">Logout</div>
             </div>
 
             <div id="overview" class="content-section active">
                 <h2>System Overview</h2>
                 <div class="stats">
                     <div class="stat-card">
-                        <div class="stat-value" id="totalStaff">0</div>
+                        <div class="stat-value" id="totalStaff">-</div>
                         <div class="stat-label">Total Staff</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-value" id="verifiedStaff">0</div>
+                        <div class="stat-value" id="verifiedStaff">-</div>
                         <div class="stat-label">Verified Staff</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-value" id="totalBatches">0</div>
+                        <div class="stat-value" id="totalBatches">-</div>
                         <div class="stat-label">Payroll Batches</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-value" id="totalAmount">₦0</div>
+                        <div class="stat-value" id="totalAmount">-</div>
                         <div class="stat-label">Total Processed</div>
                     </div>
                 </div>
+                <div id="overviewError" class="error hidden"></div>
             </div>
 
             <div id="staff" class="content-section">
                 <h2>Registered Staff</h2>
                 <div id="staffLoading" class="loading">Loading staff data...</div>
+                <div id="staffError" class="error hidden"></div>
                 <div id="staffContent"></div>
             </div>
 
             <div id="payroll" class="content-section">
                 <h2>Payroll Batches</h2>
                 <div id="payrollLoading" class="loading">Loading payroll data...</div>
+                <div id="payrollError" class="error hidden"></div>
                 <div id="payrollContent"></div>
+            </div>
+
+            <div id="blockchain" class="content-section">
+                <h2>Blockchain Information</h2>
+                <div style="background: #f5f5f5; padding: 20px; border-radius: 8px;">
+                    <p><strong>Network:</strong> Stellar Testnet</p>
+                    <p><strong>Contract ID:</strong> <code id="contractId">Loading...</code></p>
+                    <p><strong>RPC URL:</strong> https://soroban-testnet.stellar.org</p>
+                    <p style="margin-top: 15px;">
+                        <a href="https://stellar.expert/explorer/testnet" target="_blank" style="color: #667eea;">
+                            View on Stellar Expert →
+                        </a>
+                    </p>
+                </div>
             </div>
         </div>
     </div>
@@ -291,12 +343,41 @@
         const API_URL = 'http://localhost:5000/api';
         let token = localStorage.getItem('token');
 
+        // Check server connection
+        async function checkConnection() {
+            const statusEl = document.getElementById('connectionStatus');
+            try {
+                const response = await fetch('http://localhost:5000/health');
+                const data = await response.json();
+                if (data.status === 'healthy') {
+                    statusEl.className = 'connection-status online';
+                    return true;
+                }
+            } catch (error) {
+                statusEl.className = 'connection-status offline';
+                console.error('Server connection failed:', error);
+                return false;
+            }
+        }
+
         async function login() {
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
             const errorDiv = document.getElementById('loginError');
+            const loginBtn = document.getElementById('loginBtn');
+
+            if (!email || !password) {
+                errorDiv.textContent = 'Please enter email and password';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+
+            loginBtn.disabled = true;
+            loginBtn.textContent = 'Logging in...';
+            errorDiv.classList.add('hidden');
 
             try {
+                console.log('Attempting login...');
                 const response = await fetch(`${API_URL}/auth/login`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -304,20 +385,25 @@
                 });
 
                 const data = await response.json();
+                console.log('Login response:', data);
 
-                if (data.success) {
+                if (data.success && data.data && data.data.token) {
                     token = data.data.token;
                     localStorage.setItem('token', token);
                     document.getElementById('loginSection').classList.add('hidden');
                     document.getElementById('dashboard').classList.remove('hidden');
                     loadDashboard();
                 } else {
-                    errorDiv.textContent = data.error || 'Login failed';
+                    errorDiv.textContent = data.error || data.message || 'Login failed';
                     errorDiv.classList.remove('hidden');
                 }
             } catch (error) {
-                errorDiv.textContent = 'Connection error. Is the server running?';
+                console.error('Login error:', error);
+                errorDiv.textContent = 'Connection error. Is the server running on port 5000?';
                 errorDiv.classList.remove('hidden');
+            } finally {
+                loginBtn.disabled = false;
+                loginBtn.textContent = 'Login';
             }
         }
 
@@ -328,12 +414,7 @@
             document.getElementById('loginSection').classList.remove('hidden');
         }
 
-        function switchTab(tab) {
-            if (tab === 'logout') {
-                logout();
-                return;
-            }
-
+        function switchTab(event, tab) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.content-section').forEach(s => s.classList.remove('active'));
             
@@ -342,6 +423,7 @@
 
             if (tab === 'staff') loadStaff();
             if (tab === 'payroll') loadPayroll();
+            if (tab === 'blockchain') loadBlockchainInfo();
         }
 
         async function loadDashboard() {
@@ -358,27 +440,33 @@
                 const staffData = await staffRes.json();
                 const payrollData = await payrollRes.json();
 
-                if (staffData.success) {
-                    const staff = staffData.data.staff;
+                if (staffData.success && staffData.data) {
+                    const staff = staffData.data.staff || [];
                     document.getElementById('totalStaff').textContent = staff.length;
                     document.getElementById('verifiedStaff').textContent = staff.filter(s => s.verified).length;
                 }
 
-                if (payrollData.success) {
-                    const batches = payrollData.data.batches;
+                if (payrollData.success && payrollData.data) {
+                    const batches = payrollData.data.batches || [];
                     document.getElementById('totalBatches').textContent = batches.length;
                     const total = batches.reduce((sum, b) => sum + (b.totalAmount || 0), 0);
                     document.getElementById('totalAmount').textContent = '₦' + total.toLocaleString();
                 }
             } catch (error) {
                 console.error('Error loading dashboard:', error);
+                document.getElementById('overviewError').textContent = 'Failed to load dashboard data';
+                document.getElementById('overviewError').classList.remove('hidden');
             }
         }
 
         async function loadStaff() {
             const content = document.getElementById('staffContent');
             const loading = document.getElementById('staffLoading');
+            const errorDiv = document.getElementById('staffError');
+            
             loading.style.display = 'block';
+            errorDiv.classList.add('hidden');
+            content.innerHTML = '';
 
             try {
                 const response = await fetch(`${API_URL}/staff?limit=100`, {
@@ -388,8 +476,14 @@
 
                 loading.style.display = 'none';
 
-                if (data.success) {
-                    const staff = data.data.staff;
+                if (data.success && data.data) {
+                    const staff = data.data.staff || [];
+                    
+                    if (staff.length === 0) {
+                        content.innerHTML = '<p style="text-align: center; padding: 40px; color: #666;">No staff registered yet.</p>';
+                        return;
+                    }
+
                     content.innerHTML = `
                         <table>
                             <thead>
@@ -406,27 +500,35 @@
                                 ${staff.map(s => `
                                     <tr>
                                         <td><code>${s.staffHash.substring(0, 16)}...</code></td>
-                                        <td>${s.grade}</td>
-                                        <td>${s.department}</td>
+                                        <td>${s.grade || 'N/A'}</td>
+                                        <td>${s.department || 'N/A'}</td>
                                         <td><span class="badge ${s.verified ? 'verified' : 'pending'}">${s.verified ? 'Verified' : 'Pending'}</span></td>
-                                        <td>${s.blockchainTxs.length}</td>
+                                        <td>${s.blockchainTxs ? s.blockchainTxs.length : 0}</td>
                                         <td>${new Date(s.createdAt).toLocaleDateString()}</td>
                                     </tr>
                                 `).join('')}
                             </tbody>
                         </table>
                     `;
+                } else {
+                    errorDiv.textContent = data.error || 'Failed to load staff data';
+                    errorDiv.classList.remove('hidden');
                 }
             } catch (error) {
                 loading.style.display = 'none';
-                content.innerHTML = '<div class="error">Failed to load staff data</div>';
+                errorDiv.textContent = 'Failed to load staff data: ' + error.message;
+                errorDiv.classList.remove('hidden');
             }
         }
 
         async function loadPayroll() {
             const content = document.getElementById('payrollContent');
             const loading = document.getElementById('payrollLoading');
+            const errorDiv = document.getElementById('payrollError');
+            
             loading.style.display = 'block';
+            errorDiv.classList.add('hidden');
+            content.innerHTML = '';
 
             try {
                 const response = await fetch(`${API_URL}/payroll?limit=100`, {
@@ -436,17 +538,21 @@
 
                 loading.style.display = 'none';
 
-                if (data.success) {
-                    const batches = data.data.batches;
+                if (data.success && data.data) {
+                    const batches = data.data.batches || [];
+                    
+                    if (batches.length === 0) {
+                        content.innerHTML = '<p style="text-align: center; padding: 40px; color: #666;">No payroll batches yet.</p>';
+                        return;
+                    }
+
                     content.innerHTML = `
                         <table>
                             <thead>
                                 <tr>
-                                    <th>Month/Year</th>
                                     <th>Batch Hash</th>
+                                    <th>Uploaded</th>
                                     <th>Staff Count</th>
-                                    <th>Total Amount</th>
-                                    <th>Flagged</th>
                                     <th>Status</th>
                                     <th>Blockchain TX</th>
                                 </tr>
@@ -454,24 +560,42 @@
                             <tbody>
                                 ${batches.map(b => `
                                     <tr>
-                                        <td>${b.month}/${b.year}</td>
                                         <td><code>${b.batchHash.substring(0, 16)}...</code></td>
-                                        <td>${b.totalStaff}</td>
-                                        <td>₦${(b.totalAmount || 0).toLocaleString()}</td>
-                                        <td>${b.flaggedCount || 0}</td>
-                                        <td><span class="badge ${b.status === 'verified' ? 'verified' : b.status === 'processing' ? 'pending' : 'flagged'}">${b.status}</span></td>
-                                        <td>${b.blockchainTx ? '✅' : '❌'}</td>
+                                        <td>${new Date(b.uploadedAt).toLocaleString()}</td>
+                                        <td>${b.totalStaff || 0}</td>
+                                        <td><span class="badge ${b.status === 'completed' ? 'verified' : b.status === 'processing' ? 'pending' : 'flagged'}">${b.status}</span></td>
+                                        <td>${b.blockchainTx ? '✅ Yes' : '❌ No'}</td>
                                     </tr>
                                 `).join('')}
                             </tbody>
                         </table>
                     `;
+                } else {
+                    errorDiv.textContent = data.error || 'Failed to load payroll data';
+                    errorDiv.classList.remove('hidden');
                 }
             } catch (error) {
                 loading.style.display = 'none';
-                content.innerHTML = '<div class="error">Failed to load payroll data</div>';
+                errorDiv.textContent = 'Failed to load payroll data: ' + error.message;
+                errorDiv.classList.remove('hidden');
             }
         }
+
+        function loadBlockchainInfo() {
+            // This would fetch from your backend config endpoint if you create one
+            document.getElementById('contractId').textContent = 'CCGMNOLCJ576XZMT4HSSRSH44IVBMOSDQODUUU3MSWFRZMAWAPTHKYLU';
+        }
+
+        // Allow Enter key to login
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('password').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') login();
+            });
+        });
+
+        // Check connection on load
+        checkConnection();
+        setInterval(checkConnection, 30000); // Check every 30 seconds
 
         // Check if already logged in
         if (token) {
