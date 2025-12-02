@@ -6,7 +6,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import mongoSanitize from 'express-mongo-sanitize';
+// import mongoSanitize from 'express-mongo-sanitize';
 import hpp from 'hpp';
 import compression from 'compression';
 import connectDatabase from './config/database';
@@ -91,7 +91,13 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // 5. Data Sanitization - Prevent NoSQL injection
-app.use(mongoSanitize());
+// app.use(mongoSanitize({
+//   replaceWith: '_',
+//   onSanitize: ({ req, key }) => {
+//     console.warn(`Sanitized potentially malicious key: ${key}`);
+//   },
+// }));
+
 
 // 6. HTTP Parameter Pollution - Prevent parameter pollution
 app.use(hpp());
@@ -251,3 +257,7 @@ process.on('uncaughtException', (err: Error) => {
 });
 
 export default app;
+
+
+
+
