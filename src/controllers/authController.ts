@@ -4,6 +4,15 @@ import { generateToken } from "../utils/auth";
 import { UserRole } from "../types";
 import bcrypt from "bcryptjs";
 
+// Cookie configuration
+const getCookieOptions = () => ({
+  httpOnly: true,
+  secure: true, 
+  sameSite: "none" as const, 
+  maxAge: 7 * 24 * 60 * 60 * 1000, 
+  path: "/",
+});
+
 /**
  * Register a new user (admin/auditor)
  */
@@ -57,14 +66,8 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       role: user.role,
     });
 
-    // Set cookie
-    res.cookie("token", token, {
-      httpOnly: true,
-      secure: false,
-      sameSite: "none",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: "/",
-    });
+    // Set cookie with correct settings
+    res.cookie("token", token, getCookieOptions());
 
     res.status(201).json({
       success: true,
@@ -142,13 +145,8 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       role: user.role,
     });
 
-    res.cookie("token", token, {
-      httpOnly: true,
-      secure: false,
-      sameSite: "none",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: "/",
-    });
+    // Set cookie with correct settings
+    res.cookie("token", token, getCookieOptions());
 
     res.status(200).json({
       success: true,
@@ -179,12 +177,8 @@ export const login = async (req: Request, res: Response): Promise<void> => {
  * Logout - Clear cookie
  */
 export const logout = (req: Request, res: Response): void => {
-  res.clearCookie("token", {
-    httpOnly: true,
-    secure: false,
-    sameSite: "none",
-    path: "/",
-  });
+  // Clear cookie with same settings
+  res.clearCookie("token", getCookieOptions());
 
   res.status(200).json({
     success: true,

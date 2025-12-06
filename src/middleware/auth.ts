@@ -11,6 +11,14 @@ export const authenticate = async (
   next: NextFunction
 ): Promise<void> => {
   try {
+    // Debug logging (remove in production)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔐 Auth Middleware Debug:');
+      console.log('  - Cookies:', req.cookies);
+      console.log('  - Token from cookie:', req.cookies?.token ? 'EXISTS' : 'MISSING');
+      console.log('  - Auth header:', req.headers.authorization ? 'EXISTS' : 'MISSING');
+    }
+
     // Extract token from cookie (primary) or Authorization header (fallback)
     const token = req.cookies?.token || extractTokenFromHeader(req.headers.authorization);
     
@@ -25,18 +33,32 @@ export const authenticate = async (
     // Verify token
     const decoded = verifyToken(token);
     
+    if (!decoded || !decoded.id || !decoded.role) {
+      res.status(401).json({
+        success: false,
+        error: 'Invalid token payload'
+      });
+      return;
+    }
+    
     // Attach user info to request
     req.user = {
       id: decoded.id,
       role: decoded.role
     };
     
+    if (process.env.NODE_ENV === 'development') {
+      console.log('  - User authenticated:', decoded.id, '-', decoded.role);
+    }
+    
     next();
   } catch (error: any) {
+    console.error('❌ Authentication error:', error.message);
+    
     res.status(401).json({
       success: false,
       error: 'Invalid or expired token',
-      message: error.message
+      message: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -65,6 +87,10 @@ export const authorize = (...roles: UserRole[]) => {
     }
 
     if (!roles.includes(req.user.role)) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`⚠️  Authorization failed: User role '${req.user.role}' not in allowed roles: ${roles.join(', ')}`);
+      }
+      
       res.status(403).json({
         success: false,
         error: 'Insufficient permissions',
