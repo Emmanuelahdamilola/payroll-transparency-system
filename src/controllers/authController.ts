@@ -51,12 +51,13 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       role: user.role,
     });
 
-    // Send JWT as HttpOnly cookie with proper sameSite
+    // FIXED: Proper cookie settings for same-domain deployment
     res.cookie("token", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      secure: process.env.NODE_ENV === "production", // true on Render
+      sameSite: "strict", // ✅ FIXED: Use 'strict' for same domain
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      path: "/", // ✅ ADDED: Explicit path
     });
 
     res.status(201).json({
@@ -137,12 +138,13 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       role: user.role,
     });
 
-    // Store token in secure HttpOnly cookie with proper sameSite
+    // FIXED: Proper cookie settings for same-domain deployment
     res.cookie("token", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      secure: process.env.NODE_ENV === "production", // true on Render
+      sameSite: "strict", // ✅ FIXED: Use 'strict' for same domain
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      path: "/", // ✅ ADDED: Explicit path
     });
 
     res.status(200).json({
@@ -174,10 +176,12 @@ export const login = async (req: Request, res: Response): Promise<void> => {
  * Logout - Clear cookie
  */
 export const logout = (req: Request, res: Response): void => {
+  // FIXED: Match the exact cookie settings used when setting
   res.clearCookie("token", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    sameSite: "strict", // ✅ FIXED: Must match login/register
+    path: "/", // ✅ ADDED: Must match login/register
   });
 
   res.status(200).json({
@@ -192,6 +196,14 @@ export const logout = (req: Request, res: Response): void => {
 export const getProfile = async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = (req as any).user?.id;
+
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        error: "User not authenticated",
+      });
+      return;
+    }
 
     const user = await User.findById(userId);
 

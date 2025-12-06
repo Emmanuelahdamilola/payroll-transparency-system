@@ -1,4 +1,3 @@
-
 // Load environment variables first
 import dotenv from 'dotenv';
 dotenv.config();
@@ -41,17 +40,34 @@ app.use(helmet({
   }
 }));
 
-// 2. CORS configuration for cookies
+// 2. CORS configuration - FIXED for same-domain deployment
 const allowedOrigins = process.env.ALLOWED_ORIGINS 
   ? process.env.ALLOWED_ORIGINS.split(',')
-  : ['http://localhost:3000', 'http://localhost:5173'];
+  : ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:5000'];
 
 app.use(cors({
-  origin: allowedOrigins,
-  credentials: true,   
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like Postman, mobile apps, same-origin)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      return callback(null, true);
+    }
+    
+    // In production on Render, if frontend is served from same domain, allow it
+    if (process.env.NODE_ENV === 'production' && !origin) {
+      return callback(null, true);
+    }
+    
+    const msg = 'The CORS policy does not allow access from the specified Origin.';
+    return callback(new Error(msg), false);
+  },
+  credentials: true, // ✅ Allow cookies
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'], 
-  exposedHeaders: ['Set-Cookie'],
+  exposedHeaders: ['Set-Cookie'], // ✅ Expose Set-Cookie header
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 }));
 
 // 3. Rate Limiting
@@ -59,24 +75,27 @@ const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
   message: 'Too many requests from this IP.',
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
-  skipSuccessfulRequests: true
+  max: 10, // Increased from 5 to 10 for development
+  skipSuccessfulRequests: true,
+  message: 'Too many authentication attempts. Please try again later.',
 });
 
 app.use('/api/', limiter);
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 
-// 4. Body Parser
+// 4. Cookie Parser - MUST come before routes
+app.use(cookieParser()); 
+
+// 5. Body Parser
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// 5. Cookie Parser 
-app.use(cookieParser()); 
 
 // 6. HPP
 app.use(hpp());
@@ -90,6 +109,7 @@ app.use(compression());
 if (process.env.NODE_ENV === 'development') {
   app.use((req: Request, res: Response, next: NextFunction) => {
     console.log(`${req.method} ${req.path}`);
+    console.log('Cookies:', req.cookies); // Log cookies for debugging
     next();
   });
 }
@@ -102,7 +122,8 @@ app.get('/health', (req: Request, res: Response) => {
   res.json({ 
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    uptime: Math.floor(process.uptime())
+    uptime: Math.floor(process.uptime()),
+    environment: process.env.NODE_ENV
   });
 });
 
@@ -110,6 +131,7 @@ app.get('/', (req: Request, res: Response) => {
   res.json({ 
     message: 'Payroll Transparency System API',
     version: '1.0.0',
+    environment: process.env.NODE_ENV
   });
 });
 
@@ -148,6 +170,8 @@ const PORT = process.env.PORT || 5000;
 
 const server = app.listen(PORT, () => {
   console.log('🚀 Server running on port', PORT);
+  console.log('🌍 Environment:', process.env.NODE_ENV);
+  console.log('🍪 Trust proxy:', app.get('trust proxy'));
 });
 
 // ============================================
@@ -190,6 +214,4 @@ process.on('uncaughtException', (err: Error) => {
   gracefulShutdown('Uncaught Exception');
 });
 
-
 export default app;
-
