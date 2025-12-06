@@ -20,7 +20,8 @@ import flagRoutes from './routes/flagRoutes';
 // Create Express app
 const app = express();
 
-// Required for cookies behind proxy (Render, Vercel, Nginx)
+// ✅ CRITICAL: Required for cookies behind proxy (Render, Vercel, Nginx)
+// This allows Express to trust the X-Forwarded-* headers from the proxy
 app.set('trust proxy', 1);
 
 // Connect to MongoDB
@@ -46,11 +47,23 @@ const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:5000",
   "https://payroll-transparency-frontend.vercel.app",
-];
+  // Add your Render backend URL if needed for self-requests
+  process.env.BACKEND_URL, // e.g., "https://your-app.onrender.com"
+].filter(Boolean); // Remove undefined values
 
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      // Allow requests with no origin (mobile apps, Postman, etc.)
+      if (!origin) return callback(null, true);
+      
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        console.warn(`❌ CORS blocked origin: ${origin}`);
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
@@ -58,39 +71,46 @@ app.use(
   })
 );
 
-
-// 3. Rate Limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  message: 'Too many requests from this IP.',
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10, 
-  skipSuccessfulRequests: true,
-  message: 'Too many authentication attempts. Please try again later.',
-});
-
-app.use('/api/', limiter);
-app.use('/api/auth/login', authLimiter);
-app.use('/api/auth/register', authLimiter);
-
-// 4. Cookie Parser - MUST come before routes
+// 3. Cookie Parser - MUST come BEFORE rate limiting and routes
 app.use(cookieParser()); 
 
-// 5. Body Parser
+// 4. Body Parser
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// 6. HPP
+// 5. HPP (HTTP Parameter Pollution)
 app.use(hpp());
 
-// 7. Compression
+// 6. Compression
 app.use(compression());
+
+// 7. Rate Limiting (after cookie parser)
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100,
+  message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Use IP from proxy headers
+  keyGenerator: (req) => {
+    return req.ip || req.connection.remoteAddress || 'unknown';
+  }
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 attempts
+  skipSuccessfulRequests: true,
+  message: 'Too many authentication attempts. Please try again later.',
+  keyGenerator: (req) => {
+    return req.ip || req.connection.remoteAddress || 'unknown';
+  }
+});
+
+// Apply rate limiters
+app.use('/api/', limiter);
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
 
 // ============================================
 // LOGGING
@@ -98,7 +118,8 @@ app.use(compression());
 if (process.env.NODE_ENV === 'development') {
   app.use((req: Request, res: Response, next: NextFunction) => {
     console.log(`${req.method} ${req.path}`);
-    console.log('Cookies:', req.cookies); // Log cookies for debugging
+    console.log('Cookies:', req.cookies);
+    console.log('Origin:', req.get('origin'));
     next();
   });
 }
@@ -112,7 +133,8 @@ app.get('/health', (req: Request, res: Response) => {
     status: 'healthy',
     timestamp: new Date().toISOString(),
     uptime: Math.floor(process.uptime()),
-    environment: process.env.NODE_ENV
+    environment: process.env.NODE_ENV,
+    trustProxy: app.get('trust proxy')
   });
 });
 
@@ -134,15 +156,29 @@ app.use('/api/flags', flagRoutes);
 // ERROR HANDLING
 // ============================================
 
+// 404 handler
 app.use((req: Request, res: Response) => {
   res.status(404).json({
     success: false,
-    error: 'Route not found'
+    error: 'Route not found',
+    path: req.path
   });
 });
 
+// Global error handler
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-  console.error('Error:', err);
+  console.error('❌ Error:', err);
+  
+  // Handle CORS errors specifically
+  if (err.message === 'Not allowed by CORS') {
+    res.status(403).json({
+      success: false,
+      error: 'CORS policy violation',
+      message: 'Origin not allowed'
+    });
+    return;
+  }
+  
   res.status(500).json({
     success: false,
     error: process.env.NODE_ENV === 'production' 
@@ -161,6 +197,7 @@ const server = app.listen(PORT, () => {
   console.log('🚀 Server running on port', PORT);
   console.log('🌍 Environment:', process.env.NODE_ENV);
   console.log('🍪 Trust proxy:', app.get('trust proxy'));
+  console.log('🔒 Allowed origins:', allowedOrigins);
 });
 
 // ============================================
