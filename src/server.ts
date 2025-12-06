@@ -40,21 +40,20 @@ app.use(helmet({
   }
 }));
 
-// 2. CORS configuration - FIXED for same-domain deployment
+// 2. CORS configuration
 const allowedOrigins = process.env.ALLOWED_ORIGINS 
   ? process.env.ALLOWED_ORIGINS.split(',')
   : ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:5000'];
 
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow requests with no origin (like Postman, mobile apps, same-origin)
     if (!origin) return callback(null, true);
     
     if (allowedOrigins.indexOf(origin) !== -1) {
       return callback(null, true);
     }
     
-    // In production on Render, if frontend is served from same domain, allow it
+    
     if (process.env.NODE_ENV === 'production' && !origin) {
       return callback(null, true);
     }
@@ -62,10 +61,10 @@ app.use(cors({
     const msg = 'The CORS policy does not allow access from the specified Origin.';
     return callback(new Error(msg), false);
   },
-  credentials: true, // ✅ Allow cookies
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'], 
-  exposedHeaders: ['Set-Cookie'], // ✅ Expose Set-Cookie header
+  exposedHeaders: ['Set-Cookie'], 
   preflightContinue: false,
   optionsSuccessStatus: 204
 }));
@@ -81,7 +80,7 @@ const limiter = rateLimit({
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10, // Increased from 5 to 10 for development
+  max: 10, 
   skipSuccessfulRequests: true,
   message: 'Too many authentication attempts. Please try again later.',
 });
