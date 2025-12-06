@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import User from "../models/User";
 import { generateToken } from "../utils/auth";
 import { UserRole } from "../types";
+import bcrypt from "bcryptjs";
 
 /**
  * Register a new user (admin/auditor)
@@ -18,7 +19,9 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    const normalizedEmail = email.toLowerCase();
+
+    const existingUser = await User.findOne({ email: normalizedEmail });
     if (existingUser) {
       res.status(400).json({
         success: false,
@@ -36,9 +39,12 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    // Hash password before saving
+    const hashedPassword = await bcrypt.hash(password, 10);
+
     const user = await User.create({
-      email: email.toLowerCase(),
-      password,
+      email: normalizedEmail,
+      password: hashedPassword,
       firstName,
       lastName,
       role: userRole,
@@ -51,12 +57,12 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       role: user.role,
     });
 
-    
+    // Set cookie
     res.cookie("token", token, {
       httpOnly: true,
-      secure: false, 
-      sameSite: "lax", 
-      maxAge: 7 * 24 * 60 * 60 * 1000, 
+      secure: false,
+      sameSite: "none",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
       path: "/",
     });
 
@@ -99,9 +105,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const user = await User.findOne({ email: email.toLowerCase() }).select(
-      "+password"
-    );
+    const user = await User.findOne({ email: email.toLowerCase() }).select("+password");
 
     if (!user) {
       res.status(401).json({
@@ -119,7 +123,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const isPasswordValid = await user.comparePassword(password);
+    const isPasswordValid = await bcrypt.compare(password, user.password);
 
     if (!isPasswordValid) {
       res.status(401).json({
@@ -138,13 +142,12 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       role: user.role,
     });
 
-   
     res.cookie("token", token, {
       httpOnly: true,
       secure: false,
-      sameSite: "lax", 
-      maxAge: 7 * 24 * 60 * 60 * 1000, 
-      path: "/", 
+      sameSite: "none",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: "/",
     });
 
     res.status(200).json({
@@ -176,12 +179,11 @@ export const login = async (req: Request, res: Response): Promise<void> => {
  * Logout - Clear cookie
  */
 export const logout = (req: Request, res: Response): void => {
- 
   res.clearCookie("token", {
     httpOnly: true,
     secure: false,
-    sameSite: "lax", 
-    path: "/", 
+    sameSite: "none",
+    path: "/",
   });
 
   res.status(200).json({

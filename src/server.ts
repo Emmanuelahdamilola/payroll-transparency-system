@@ -41,33 +41,23 @@ app.use(helmet({
 }));
 
 // 2. CORS configuration
-const allowedOrigins = process.env.ALLOWED_ORIGINS 
-  ? process.env.ALLOWED_ORIGINS.split(',')
-  : ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:5000'];
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "http://localhost:5000",
+  "https://payroll-transparency-frontend.vercel.app",
+];
 
-app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      return callback(null, true);
-    }
-    
-    
-    if (process.env.NODE_ENV === 'production' && !origin) {
-      return callback(null, true);
-    }
-    
-    const msg = 'The CORS policy does not allow access from the specified Origin.';
-    return callback(new Error(msg), false);
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'], 
-  exposedHeaders: ['Set-Cookie'], 
-  preflightContinue: false,
-  optionsSuccessStatus: 204
-}));
+app.use(
+  cors({
+    origin: allowedOrigins,
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    exposedHeaders: ["Set-Cookie"],
+  })
+);
+
 
 // 3. Rate Limiting
 const limiter = rateLimit({

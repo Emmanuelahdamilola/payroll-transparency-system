@@ -340,7 +340,7 @@ export const listPayrollBatches = async (req: AuthRequest, res: Response): Promi
 
     const batches = await PayrollBatch.find()
       .populate('uploadedBy', 'firstName lastName email')
-      .select('-payrollRecords') // Exclude large payrollRecords array
+      .select('-payrollRecords') 
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
