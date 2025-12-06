@@ -50,7 +50,8 @@ app.use(cors({
   origin: allowedOrigins,
   credentials: true,   
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-  allowedHeaders: ['Content-Type'], 
+  allowedHeaders: ['Content-Type', 'Authorization'], 
+  exposedHeaders: ['Set-Cookie'],
 }));
 
 // 3. Rate Limiting
