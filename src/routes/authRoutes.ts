@@ -25,6 +25,13 @@ router.post('/register', authController.register);
 router.post('/login', authController.login);
 
 /**
+ * @route   POST /api/auth/logout
+ * @desc    Logout user (clear cookie)
+ * @access  Public
+ */
+router.post('/logout', authController.logout);
+
+/**
  * @route   GET /api/auth/profile
  * @desc    Get current user profile
  * @access  Private
