@@ -155,7 +155,7 @@ export const uploadPayroll = async (req: AuthRequest, res: Response): Promise<vo
       const salaryValue = typeof row.salary === 'number' ? row.salary : parseFloat(row.salary || '0');
 
       if (!staffHash || isNaN(salaryValue) || salaryValue <= 0) {
-        continue; // Skip invalid rows
+        continue; 
       }
 
       // Check if staff exists in database
@@ -195,10 +195,7 @@ export const uploadPayroll = async (req: AuthRequest, res: Response): Promise<vo
       year: payrollYear
     });
 
-    console.log(`✅ Payroll batch created: ${payrollBatch._id}`);
-
     // Run AI Detection
-    console.log('🤖 Starting AI anomaly detection...');
     const detectionResult = await runAIDetection(
       payrollBatch._id.toString(),
       payrollRecords
@@ -235,7 +232,6 @@ export const uploadPayroll = async (req: AuthRequest, res: Response): Promise<vo
       year: payrollBatch.year,
     });
 
-    console.log(`🤖 AI Summary: ${aiSummary}`);
 
     // Record on blockchain
     try {
@@ -249,10 +245,8 @@ export const uploadPayroll = async (req: AuthRequest, res: Response): Promise<vo
       payrollBatch.status = 'verified';
       await payrollBatch.save();
 
-      console.log(`✅ Batch recorded on blockchain: ${blockchainTx.transactionHash}`);
     } catch (blockchainError: any) {
       console.error('Blockchain recording failed:', blockchainError);
-      // Batch is still saved in DB, but not verified on blockchain
       payrollBatch.status = 'failed';
       await payrollBatch.save();
     }

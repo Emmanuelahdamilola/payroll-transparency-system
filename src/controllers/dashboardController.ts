@@ -224,7 +224,7 @@ export const getSystemStats = async (req: AuthRequest, res: Response): Promise<v
             processingTime: {
               $divide: [
                 { $subtract: ['$updatedAt', '$createdAt'] },
-                1000 // Convert to seconds
+                1000
               ]
             }
           }

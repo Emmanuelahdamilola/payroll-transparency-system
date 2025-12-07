@@ -104,7 +104,7 @@ export const registerStaff = async (req: Request, res: Response): Promise<void> 
       department,
       blockchainTxs: [],
       verified: false,
-      isActive: true // ✅ Set default active status
+      isActive: true 
     });
 
     // Register on blockchain
