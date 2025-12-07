@@ -1,41 +1,22 @@
+
 import { Router } from 'express';
 import * as authController from '../controllers/authController';
-import * as authMiddleware from '../middleware/auth';
+import { authenticate, requireAdmin } from '../middleware/auth';
 
 const router = Router();
 
-// Debug middleware to log all requests to auth routes
-router.use((req, res, next) => {
-  console.log(`[AUTH ROUTE] ${req.method} ${req.path}`);
-  next();
-});
-
-/**
- * @route   POST /api/auth/register
- * @desc    Register a new user
- * @access  Public
- */
+// Public routes
 router.post('/register', authController.register);
-
-/**
- * @route   POST /api/auth/login
- * @desc    Login user
- * @access  Public
- */
 router.post('/login', authController.login);
-
-/**
- * @route   POST /api/auth/logout
- * @desc    Logout user (clear cookie)
- * @access  Public
- */
 router.post('/logout', authController.logout);
 
-/**
- * @route   GET /api/auth/profile
- * @desc    Get current user profile
- * @access  Private
- */
-router.get('/profile', authMiddleware.authenticate, authController.getProfile);
+// Protected routes
+router.get('/profile', authenticate, authController.getProfile);
+router.put('/update-profile', authenticate, authController.updateProfile);
+
+// Admin only routes
+router.post('/create-auditor', authenticate, requireAdmin, authController.createAuditor);
+router.get('/users', authenticate, requireAdmin, authController.listUsers);
+router.patch('/users/:id/status', authenticate, requireAdmin, authController.toggleUserStatus);
 
 export default router;

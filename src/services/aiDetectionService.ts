@@ -75,14 +75,14 @@ export const runAIDetection = async (
   const summary = {
     totalRecords: payrollRecords.length,
     ghostWorkers: ghostFlags.length,
-    duplicates: duplicateFlags.length,
+    duplicates: duplicateFlags.length + fuzzyFlags.length,
     salaryAnomalies: salaryFlags.length,
     totalFlags: allFlags.length,
   };
 
   console.log(`✅ Detection complete: ${allFlags.length} flags created`);
   console.log(`   - Ghost workers: ${ghostFlags.length}`);
-  console.log(`   - Duplicates: ${duplicateFlags.length}`);
+  console.log(`   - Duplicates: ${duplicateFlags.length + fuzzyFlags.length}`);
   console.log(`   - Salary anomalies: ${salaryFlags.length}`);
 
   return { flags: allFlags, summary };
@@ -101,30 +101,30 @@ async function detectGhostWorkers(
     const staff = await Staff.findOne({ staffHash: record.staffHash });
 
     if (!staff) {
-      const templateExplanation = generateExplanation(FlagType.GHOST, {
-        staffHash: record.staffHash,
-        salary: record.salary,
-      });
-
-      // Generate AI-enhanced explanation
-      const explanation = await generateAIExplanation(
+      // Generate simple reason
+      const reason = 'Staff hash not found in registry';
+      
+      // Generate detailed AI explanation
+      const aiExplanation = await generateAIExplanation(
         FlagType.GHOST,
         {
           staffHash: record.staffHash,
           salary: record.salary,
         },
-        templateExplanation
+        `Ghost Worker Alert: Staff hash "${record.staffHash.substring(0, 16)}..." not found in the verified staff registry.`
       );
 
       const flag = await Flag.create({
         payrollId,
         staffHash: record.staffHash,
+        salary: record.salary, // ✅ Add salary
         type: FlagType.GHOST,
         score: 1.0,
-        explanation,
+        reason, // ✅ Simple reason
+        aiExplanation, // ✅ Detailed AI explanation
         metadata: {
           salary: record.salary,
-          reason: 'Staff hash not found in registry',
+          detectionMethod: 'registry_lookup',
         },
         reviewed: false,
         resolution: 'pending',
@@ -133,28 +133,26 @@ async function detectGhostWorkers(
       flags.push(flag);
     } else if (!staff.verified) {
       // Staff exists but not verified on blockchain
-      const templateExplanation = generateExplanation(FlagType.MISSING_REGISTRY, {
-        staffHash: record.staffHash,
-        verified: staff.verified,
-        blockchainTxs: staff.blockchainTxs.length,
-      });
-
-      const explanation = await generateAIExplanation(
+      const reason = 'Staff not verified on blockchain';
+      
+      const aiExplanation = await generateAIExplanation(
         FlagType.MISSING_REGISTRY,
         {
           staffHash: record.staffHash,
           verified: staff.verified,
           blockchainTxs: staff.blockchainTxs.length,
         },
-        templateExplanation
+        `Unverified Staff: Staff exists in database but is not verified on blockchain.`
       );
 
       const flag = await Flag.create({
         payrollId,
         staffHash: record.staffHash,
+        salary: record.salary, // ✅ Add salary
         type: FlagType.MISSING_REGISTRY,
         score: 0.9,
-        explanation,
+        reason, // ✅ Simple reason
+        aiExplanation, // ✅ Detailed AI explanation
         metadata: {
           salary: record.salary,
           grade: staff.grade,
@@ -201,27 +199,37 @@ async function detectDuplicates(
       for (const staff of staffList) {
         const record = records.find((r) => r.staffHash === staff.staffHash);
         if (record) {
+          const otherHashes = staffList
+            .filter((s) => s.staffHash !== staff.staffHash)
+            .map((s) => s.staffHash);
+
+          const reason = `Duplicate BVN detected (${staffList.length} staff members)`;
+          
+          const aiExplanation = await generateAIExplanation(
+            FlagType.DUPLICATE,
+            {
+              field: 'BVN',
+              duplicateCount: staffList.length,
+              otherStaffHashes: otherHashes,
+            },
+            `This BVN is already registered to ${staffList.length - 1} other staff member(s).`
+          );
+
           const flag = await Flag.create({
             payrollId,
             staffHash: staff.staffHash,
+            salary: record.salary, // ✅ Add salary
             type: FlagType.DUPLICATE,
-            score: 1.0, // 100% confidence - exact BVN match
-            explanation: generateExplanation(FlagType.DUPLICATE, {
-              field: 'BVN',
-              duplicateCount: staffList.length,
-              otherStaffHashes: staffList
-                .filter((s) => s.staffHash !== staff.staffHash)
-                .map((s) => s.staffHash),
-            }),
+            score: 1.0,
+            reason, // ✅ Simple reason
+            aiExplanation, // ✅ Detailed AI explanation
             metadata: {
               salary: record.salary,
               grade: staff.grade,
               department: staff.department,
               duplicateField: 'BVN',
               duplicateCount: staffList.length,
-              otherStaffHashes: staffList
-                .filter((s) => s.staffHash !== staff.staffHash)
-                .map((s) => s.staffHash),
+              otherStaffHashes: otherHashes,
             },
             reviewed: false,
             resolution: 'pending',
@@ -254,27 +262,37 @@ async function detectDuplicates(
           );
 
           if (!existingFlag) {
+            const otherHashes = staffList
+              .filter((s) => s.staffHash !== staff.staffHash)
+              .map((s) => s.staffHash);
+
+            const reason = `Duplicate NIN detected (${staffList.length} staff members)`;
+            
+            const aiExplanation = await generateAIExplanation(
+              FlagType.DUPLICATE,
+              {
+                field: 'NIN',
+                duplicateCount: staffList.length,
+                otherStaffHashes: otherHashes,
+              },
+              `This NIN is already registered to ${staffList.length - 1} other staff member(s).`
+            );
+
             const flag = await Flag.create({
               payrollId,
               staffHash: staff.staffHash,
+              salary: record.salary, // ✅ Add salary
               type: FlagType.DUPLICATE,
               score: 1.0,
-              explanation: generateExplanation(FlagType.DUPLICATE, {
-                field: 'NIN',
-                duplicateCount: staffList.length,
-                otherStaffHashes: staffList
-                  .filter((s) => s.staffHash !== staff.staffHash)
-                  .map((s) => s.staffHash),
-              }),
+              reason, // ✅ Simple reason
+              aiExplanation, // ✅ Detailed AI explanation
               metadata: {
                 salary: record.salary,
                 grade: staff.grade,
                 department: staff.department,
                 duplicateField: 'NIN',
                 duplicateCount: staffList.length,
-                otherStaffHashes: staffList
-                  .filter((s) => s.staffHash !== staff.staffHash)
-                  .map((s) => s.staffHash),
+                otherStaffHashes: otherHashes,
               },
               reviewed: false,
               resolution: 'pending',
@@ -330,18 +348,26 @@ async function detectFuzzyDuplicates(
         const record2 = records.find((r) => r.staffHash === staff2.staff.staffHash);
 
         if (record1) {
-          const flag = await Flag.create({
-            payrollId,
-            staffHash: staff1.staff.staffHash,
-            type: FlagType.DUPLICATE,
-            score: similarity,
-            explanation: generateExplanation(FlagType.DUPLICATE, {
+          const reason = `Similar name detected (${(similarity * 100).toFixed(1)}% match)`;
+          
+          const aiExplanation = await generateAIExplanation(
+            FlagType.DUPLICATE,
+            {
               field: 'Name (Fuzzy)',
               similarity: similarity,
               matchedWith: staff2.staff.staffHash,
-              name1: staff1.name,
-              name2: staff2.name,
-            }),
+            },
+            `Name similarity detected (${(similarity * 100).toFixed(1)}% match). This staff member's name is very similar to another registered staff.`
+          );
+
+          const flag = await Flag.create({
+            payrollId,
+            staffHash: staff1.staff.staffHash,
+            salary: record1.salary, // ✅ Add salary
+            type: FlagType.DUPLICATE,
+            score: similarity,
+            reason, // ✅ Simple reason
+            aiExplanation, // ✅ Detailed AI explanation
             metadata: {
               salary: record1.salary,
               grade: staff1.staff.grade,
@@ -399,29 +425,42 @@ async function detectSalaryAnomalies(
       // Calculate anomaly score
       let score = 0;
       let deviation = 0;
+      let direction = '';
 
       if (record.salary < gradeRange.min) {
         deviation = ((gradeRange.min - record.salary) / gradeRange.min) * 100;
         score = Math.min(deviation / 100, 1.0);
+        direction = 'below';
         console.log(`  🚨 BELOW minimum by ${deviation.toFixed(1)}%`);
       } else {
         deviation = ((record.salary - gradeRange.max) / gradeRange.max) * 100;
         score = Math.min(deviation / 100, 1.0);
+        direction = 'above';
         console.log(`  🚨 ABOVE maximum by ${deviation.toFixed(1)}%`);
       }
 
-      const flag = await Flag.create({
-        payrollId,
-        staffHash: record.staffHash,
-        type: FlagType.ANOMALY,
-        score: Math.min(score, 1.0),
-        explanation: generateExplanation(FlagType.ANOMALY, {
+      const reason = `Salary ${direction} expected range by ${deviation.toFixed(1)}%`;
+      
+      const aiExplanation = await generateAIExplanation(
+        FlagType.ANOMALY,
+        {
           salary: record.salary,
           grade: staff.grade,
           expectedMin: gradeRange.min,
           expectedMax: gradeRange.max,
           deviation: deviation.toFixed(1),
-        }),
+        },
+        `Salary of ₦${record.salary.toLocaleString()} is ${direction} the expected range for ${staff.grade}.`
+      );
+
+      const flag = await Flag.create({
+        payrollId,
+        staffHash: record.staffHash,
+        salary: record.salary, // ✅ Add salary
+        type: FlagType.ANOMALY,
+        score: Math.min(score, 1.0),
+        reason, // ✅ Simple reason
+        aiExplanation, // ✅ Detailed AI explanation
         metadata: {
           salary: record.salary,
           grade: staff.grade,
@@ -442,33 +481,6 @@ async function detectSalaryAnomalies(
 
   console.log(`💰 Salary anomaly detection complete: ${flags.length} anomalies found`);
   return flags;
-}
-
-/**
- * Generate human-readable explanations
- */
-function generateExplanation(type: FlagType, data: any): string {
-  switch (type) {
-    case FlagType.GHOST:
-      return `⚠️ Ghost Worker Alert: Staff hash "${data.staffHash.substring(0, 16)}..." not found in the verified staff registry. This staff member may not exist or was never properly registered. Salary: ₦${data.salary.toLocaleString()}.`;
-
-    case FlagType.MISSING_REGISTRY:
-      return `⚠️ Unverified Staff: Staff exists in database but is not verified on blockchain (${data.blockchainTxs} blockchain transactions). This staff member needs blockchain verification before receiving payments.`;
-
-    case FlagType.DUPLICATE:
-      if (data.field === 'Name (Fuzzy)') {
-        return `⚠️ Potential Duplicate: Name similarity detected (${(data.similarity * 100).toFixed(1)}% match). This staff member's name is very similar to another registered staff (Hash: ${data.matchedWith.substring(0, 16)}...). Names: "${data.name1}" vs "${data.name2}". Please verify if these are the same person.`;
-      } else {
-        return `🚨 Duplicate ${data.field}: This ${data.field} is already registered to ${data.duplicateCount - 1} other staff member(s). This indicates potential identity fraud or data entry error. Other staff hashes: ${data.otherStaffHashes.map((h: string) => h.substring(0, 8)).join(', ')}...`;
-      }
-
-    case FlagType.ANOMALY:
-      const direction = data.salary < data.expectedMin ? 'below' : 'above';
-      return `💰 Salary Anomaly: Salary of ₦${data.salary.toLocaleString()} is ${direction} the expected range for ${data.grade} (₦${data.expectedMin.toLocaleString()} - ₦${data.expectedMax.toLocaleString()}). Deviation: ${data.deviation}%. This may indicate an error or special circumstance requiring verification.`;
-
-    default:
-      return 'Anomaly detected. Please review this record.';
-  }
 }
 
 export default {

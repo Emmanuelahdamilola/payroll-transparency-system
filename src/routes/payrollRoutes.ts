@@ -1,3 +1,4 @@
+
 import { Router } from 'express';
 import * as payrollController from '../controllers/payrollController';
 import { authenticate, requireAdmin, requireAdminOrAuditor } from '../middleware/auth';
@@ -6,47 +7,16 @@ import { getPayrollFlags } from '../controllers/flagController';
 
 const router = Router();
 
-/**
- * @route   POST /api/payroll/upload
- * @desc    Upload payroll CSV file
- * @access  Private (Admin only)
- */
-router.post(
-  '/upload',
-  authenticate,
-  requireAdmin,
-  upload.single('payroll'),
-  payrollController.uploadPayroll
-);
+// All routes require authentication
+router.use(authenticate);
 
-/**
- * @route   GET /api/payroll
- * @desc    List all payroll batches (paginated)
- * @access  Private (Admin or Auditor)
- */
-router.get('/', authenticate, requireAdminOrAuditor, payrollController.listPayrollBatches);
+// Admin only routes
+router.post('/upload', requireAdmin, upload.single('payroll'), payrollController.uploadPayroll);
 
-/**
- * @route   GET /api/payroll/:id/records
- * @desc    Get payroll records for a batch
- * @access  Private (Admin or Auditor)
- */
-router.get('/:id/records', authenticate, requireAdminOrAuditor, payrollController.getPayrollRecords);
-
-/**
- * @route   GET /api/payroll/:id/flags
- * @desc    Get all flags for a specific payroll batch
- * @access  Private (Admin or Auditor)
- */
-router.get('/:id/flags', authenticate, requireAdminOrAuditor, (req, res, next) => {
-  getPayrollFlags(req, res);
-});
-
-/**
- * @route   GET /api/payroll/:id
- * @desc    Get payroll batch by ID
- * @access  Private (Admin or Auditor)
- */
-router.get('/:id', authenticate, requireAdminOrAuditor, payrollController.getPayrollBatch);
+// Admin or Auditor routes
+router.get('/', requireAdminOrAuditor, payrollController.listPayrollBatches);
+router.get('/:id', requireAdminOrAuditor, payrollController.getPayrollBatch);
+router.get('/:id/records', requireAdminOrAuditor, payrollController.getPayrollRecords);
+router.get('/:id/flags', requireAdminOrAuditor, getPayrollFlags);
 
 export default router;

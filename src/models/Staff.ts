@@ -1,3 +1,4 @@
+
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
 export interface IStaff extends Document {
@@ -16,6 +17,9 @@ export interface IStaff extends Document {
   // Work information
   grade: string;
   department: string;
+  
+  // Status
+  isActive: boolean; 
   
   // Blockchain verification
   blockchainTxs: string[];
@@ -75,6 +79,13 @@ const StaffSchema = new Schema<IStaff>(
       index: true
     },
     
+    // Status 
+    isActive: {
+      type: Boolean,
+      default: true,
+      index: true
+    },
+    
     // Blockchain tracking
     blockchainTxs: [{
       type: String
@@ -93,6 +104,7 @@ const StaffSchema = new Schema<IStaff>(
 // Compound indexes for complex queries
 StaffSchema.index({ staffHash: 1, verified: 1 });
 StaffSchema.index({ grade: 1, department: 1 });
+StaffSchema.index({ isActive: 1, createdAt: -1 }); 
 StaffSchema.index({ createdAt: -1 });
 
 const Staff: Model<IStaff> = mongoose.model<IStaff>('Staff', StaffSchema);

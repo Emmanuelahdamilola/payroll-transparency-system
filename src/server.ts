@@ -1,3 +1,4 @@
+
 // Load environment variables first
 import dotenv from 'dotenv';
 dotenv.config();
@@ -16,6 +17,9 @@ import authRoutes from './routes/authRoutes';
 import staffRoutes from './routes/staffRoutes';
 import payrollRoutes from './routes/payrollRoutes';
 import flagRoutes from './routes/flagRoutes';
+import dashboardRoutes from './routes/dashboardRoutes';
+import blockchainRoutes from './routes/blockchainRoutes';
+import auditRoutes from './routes/auditRoutes';
 
 // Create Express app
 const app = express();
@@ -84,17 +88,15 @@ app.use(hpp());
 // 6. Compression
 app.use(compression());
 
-// 7. Rate Limiting (after cookie parser)
+// 7. Rate Limiting (FIXED - removed custom keyGenerator)
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100,
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
-  // Use IP from proxy headers
-  keyGenerator: (req) => {
-    return req.ip || req.connection.remoteAddress || 'unknown';
-  }
+  // Let express-rate-limit handle IP extraction automatically
+  // It properly handles IPv6
 });
 
 const authLimiter = rateLimit({
@@ -102,9 +104,7 @@ const authLimiter = rateLimit({
   max: 10, // 10 attempts
   skipSuccessfulRequests: true,
   message: 'Too many authentication attempts. Please try again later.',
-  keyGenerator: (req) => {
-    return req.ip || req.connection.remoteAddress || 'unknown';
-  }
+  // Let express-rate-limit handle IP extraction automatically
 });
 
 // Apply rate limiters
@@ -146,11 +146,14 @@ app.get('/', (req: Request, res: Response) => {
   });
 });
 
-// API Routes
+// API Routes - Make sure all routes are mounted
 app.use('/api/auth', authRoutes);
 app.use('/api/staff', staffRoutes);
 app.use('/api/payroll', payrollRoutes);
 app.use('/api/flags', flagRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/blockchain', blockchainRoutes);
+app.use('/api/audit', auditRoutes); 
 
 // ============================================
 // ERROR HANDLING
@@ -161,7 +164,8 @@ app.use((req: Request, res: Response) => {
   res.status(404).json({
     success: false,
     error: 'Route not found',
-    path: req.path
+    path: req.path,
+    method: req.method
   });
 });
 

@@ -10,7 +10,7 @@ interface IPayrollRecord {
 
 export interface IPayrollBatch extends Document {
   batchHash: string;
-  uploadedBy: mongoose.Types.ObjectId; // Reference to User
+  uploadedBy: mongoose.Types.ObjectId; 
   csvLink: string;
   uploadedAt: Date;
   payrollRecords: IPayrollRecord[];
@@ -122,3 +122,4 @@ const PayrollBatch: Model<IPayrollBatch> = mongoose.model<IPayrollBatch>(
 );
 
 export default PayrollBatch;
+

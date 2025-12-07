@@ -1,28 +1,21 @@
+
 import { Router } from 'express';
 import * as staffController from '../controllers/staffController';
-import { authenticate, requireAdmin } from '../middleware/auth';
+import { authenticate, requireAdmin, requireAdminOrAuditor } from '../middleware/auth';
 
 const router = Router();
 
-/**
- * @route   POST /api/staff/register
- * @desc    Register a new staff member
- * @access  Private (Admin only)
- */
-router.post('/register', authenticate, requireAdmin, staffController.registerStaff);
+// All routes require authentication
+router.use(authenticate);
 
-/**
- * @route   GET /api/staff/:staffHash
- * @desc    Get staff by staffHash
- * @access  Private (Admin or Auditor)
- */
-router.get('/:staffHash', authenticate, staffController.getStaffByHash);
+// Admin only routes
+router.post('/register', requireAdmin, staffController.registerStaff);
+router.put('/:id', requireAdmin, staffController.updateStaff);
+router.patch('/:id/status', requireAdmin, staffController.updateStaffStatus);
 
-/**
- * @route   GET /api/staff
- * @desc    List all staff (paginated)
- * @access  Private (Admin only)
- */
-router.get('/', authenticate, requireAdmin, staffController.listStaff);
+// Admin or Auditor routes
+router.get('/stats', requireAdminOrAuditor, staffController.getStaffStats);
+router.get('/', requireAdminOrAuditor, staffController.listStaff);
+router.get('/:staffHash', requireAdminOrAuditor, staffController.getStaffByHash);
 
 export default router;

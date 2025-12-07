@@ -1,15 +1,18 @@
+
 import mongoose, { Schema, Document, Model } from 'mongoose';
 import { FlagType } from '../types';
 
 export interface IFlag extends Document {
-  payrollId: mongoose.Types.ObjectId; // Reference to PayrollBatch
+  payrollId: mongoose.Types.ObjectId; 
   staffHash: string;
+  salary?: number; 
   type: FlagType;
-  score: number; // Confidence score 0-1
-  explanation: string;
-  metadata?: Record<string, any>; // Additional context
+  score: number; 
+  reason: string; 
+  aiExplanation?: string;
+  metadata?: Record<string, any>; 
   reviewed: boolean;
-  reviewedBy?: mongoose.Types.ObjectId; // Reference to User
+  reviewedBy?: mongoose.Types.ObjectId; 
   reviewedAt?: Date;
   resolution?: 'confirmed' | 'false_positive' | 'pending';
   resolutionNotes?: string;
@@ -30,6 +33,10 @@ const FlagSchema = new Schema<IFlag>(
       required: true,
       index: true
     },
+    salary: { 
+      type: Number,
+      min: 0
+    },
     type: {
       type: String,
       enum: Object.values(FlagType),
@@ -42,9 +49,12 @@ const FlagSchema = new Schema<IFlag>(
       min: 0,
       max: 1
     },
-    explanation: {
+    reason: { 
       type: String,
       required: true
+    },
+    aiExplanation: {
+      type: String
     },
     metadata: {
       type: Schema.Types.Mixed,

@@ -1,8 +1,10 @@
+
 import { Request, Response } from "express";
 import User from "../models/User";
 import { generateToken } from "../utils/auth";
 import { UserRole } from "../types";
 import bcrypt from "bcryptjs";
+import { AuthRequest } from '../types';
 
 // Cookie configuration
 const getCookieOptions = () => ({
@@ -230,6 +232,247 @@ export const getProfile = async (req: Request, res: Response): Promise<void> => 
     res.status(500).json({
       success: false,
       error: "Failed to get profile",
+      message: error.message,
+    });
+  }
+};
+
+/**
+ * Create auditor account (Admin only)
+ * POST /api/auth/create-auditor
+ */
+export const createAuditor = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { email, password, firstName, lastName } = req.body;
+
+    if (!email || !password || !firstName || !lastName) {
+      res.status(400).json({
+        success: false,
+        error: "Missing required fields (email, password, firstName, lastName)",
+      });
+      return;
+    }
+
+    const normalizedEmail = email.toLowerCase();
+
+    const existingUser = await User.findOne({ email: normalizedEmail });
+    if (existingUser) {
+      res.status(400).json({
+        success: false,
+        error: "User with this email already exists",
+      });
+      return;
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create auditor
+    const auditor = await User.create({
+      email: normalizedEmail,
+      password: hashedPassword,
+      firstName,
+      lastName,
+      role: UserRole.AUDITOR,
+      isActive: true
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Auditor account created successfully",
+      data: {
+        user: {
+          id: auditor._id,
+          email: auditor.email,
+          firstName: auditor.firstName,
+          lastName: auditor.lastName,
+          role: auditor.role,
+        },
+      },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    console.error("Create auditor error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to create auditor",
+      message: error.message,
+    });
+  }
+};
+
+/**
+ * Update user profile
+ * PUT /api/auth/update-profile
+ */
+export const updateProfile = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user!.id;
+    const { firstName, lastName, currentPassword, newPassword } = req.body;
+
+    const user = await User.findById(userId).select('+password');
+
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        error: "User not found",
+      });
+      return;
+    }
+
+    // Update name fields if provided
+    if (firstName) user.firstName = firstName;
+    if (lastName) user.lastName = lastName;
+
+    // Update password if provided
+    if (newPassword) {
+      if (!currentPassword) {
+        res.status(400).json({
+          success: false,
+          error: "Current password is required to set new password",
+        });
+        return;
+      }
+
+      // Verify current password
+      const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
+      if (!isPasswordValid) {
+        res.status(401).json({
+          success: false,
+          error: "Current password is incorrect",
+        });
+        return;
+      }
+
+      // Hash new password
+      user.password = await bcrypt.hash(newPassword, 10);
+    }
+
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Profile updated successfully",
+      data: {
+        id: user._id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+      },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    console.error("Update profile error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to update profile",
+      message: error.message,
+    });
+  }
+};
+
+/**
+ * List all users (Admin only)
+ * GET /api/auth/users
+ */
+export const listUsers = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const role = req.query.role as string;
+    const skip = (page - 1) * limit;
+
+    const query: any = {};
+    if (role && Object.values(UserRole).includes(role as UserRole)) {
+      query.role = role;
+    }
+
+    const users = await User.find(query)
+      .select('-password')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    const total = await User.countDocuments(query);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        users,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit)
+        }
+      },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    console.error("List users error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to list users",
+      message: error.message,
+    });
+  }
+};
+
+/**
+ * Toggle user active status (Admin only)
+ * PATCH /api/auth/users/:id/status
+ */
+export const toggleUserStatus = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { isActive } = req.body;
+
+    if (typeof isActive !== 'boolean') {
+      res.status(400).json({
+        success: false,
+        error: 'isActive must be a boolean value'
+      });
+      return;
+    }
+
+    // Prevent admin from deactivating themselves
+    if (id === req.user!.id) {
+      res.status(400).json({
+        success: false,
+        error: 'You cannot deactivate your own account'
+      });
+      return;
+    }
+
+    const user = await User.findById(id);
+
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+      return;
+    }
+
+    user.isActive = isActive;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: `User ${isActive ? 'activated' : 'deactivated'} successfully`,
+      data: {
+        id: user._id,
+        email: user.email,
+        isActive: user.isActive
+      },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    console.error("Toggle user status error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to update user status",
       message: error.message,
     });
   }
