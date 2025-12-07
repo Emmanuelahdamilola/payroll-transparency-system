@@ -24,7 +24,7 @@ import auditRoutes from './routes/auditRoutes';
 // Create Express app
 const app = express();
 
-// ✅ CRITICAL: Required for cookies behind proxy (Render, Vercel, Nginx)
+// Required for cookies behind proxy (Render, Vercel, Nginx)
 // This allows Express to trust the X-Forwarded-* headers from the proxy
 app.set('trust proxy', 1);
 
@@ -51,20 +51,20 @@ const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:5000",
   "https://payroll-transparency-frontend.vercel.app",
-  // Add your Render backend URL if needed for self-requests
-  process.env.BACKEND_URL, // e.g., "https://your-app.onrender.com"
-].filter(Boolean); // Remove undefined values
+
+  process.env.BACKEND_URL, 
+].filter(Boolean); 
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (mobile apps, Postman, etc.)
+      
       if (!origin) return callback(null, true);
       
       if (allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
-        console.warn(`❌ CORS blocked origin: ${origin}`);
+        console.warn(`CORS blocked origin: ${origin}`);
         callback(new Error('Not allowed by CORS'));
       }
     },
@@ -75,7 +75,7 @@ app.use(
   })
 );
 
-// 3. Cookie Parser - MUST come BEFORE rate limiting and routes
+// 3. Cookie Parser 
 app.use(cookieParser()); 
 
 // 4. Body Parser
@@ -88,23 +88,20 @@ app.use(hpp());
 // 6. Compression
 app.use(compression());
 
-// 7. Rate Limiting (FIXED - removed custom keyGenerator)
+// 7. Rate Limiting 
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000, 
   max: 100,
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
-  // Let express-rate-limit handle IP extraction automatically
-  // It properly handles IPv6
 });
 
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000, 
   max: 10, // 10 attempts
   skipSuccessfulRequests: true,
   message: 'Too many authentication attempts. Please try again later.',
-  // Let express-rate-limit handle IP extraction automatically
 });
 
 // Apply rate limiters
@@ -146,7 +143,7 @@ app.get('/', (req: Request, res: Response) => {
   });
 });
 
-// API Routes - Make sure all routes are mounted
+// API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/staff', staffRoutes);
 app.use('/api/payroll', payrollRoutes);
@@ -198,10 +195,10 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 const PORT = process.env.PORT || 5000;
 
 const server = app.listen(PORT, () => {
-  console.log('🚀 Server running on port', PORT);
-  console.log('🌍 Environment:', process.env.NODE_ENV);
-  console.log('🍪 Trust proxy:', app.get('trust proxy'));
-  console.log('🔒 Allowed origins:', allowedOrigins);
+  console.log('Server running on port', PORT);
+  console.log('Environment:', process.env.NODE_ENV);
+  console.log('Trust proxy:', app.get('trust proxy'));
+  console.log('Allowed origins:', allowedOrigins);
 });
 
 // ============================================
@@ -216,15 +213,14 @@ const gracefulShutdown = (signal: string) => {
     
     // Close database connection
     import('./config/database').then(({ default: db }) => {
-      // MongoDB will close via mongoose connection handler
-      console.log('✅ Database connections closed');
+      console.log('Database connections closed');
       process.exit(0);
     });
   });
   
   // Force shutdown after 10 seconds
   setTimeout(() => {
-    console.error('⚠️  Forced shutdown after timeout');
+    console.error('Forced shutdown after timeout');
     process.exit(1);
   }, 10000);
 };
@@ -234,13 +230,13 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 // Handle unhandled rejections
 process.on('unhandledRejection', (err: Error) => {
-  console.error('❌ Unhandled Rejection:', err);
+  console.error(' Unhandled Rejection:', err);
   gracefulShutdown('Unhandled Rejection');
 });
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (err: Error) => {
-  console.error('❌ Uncaught Exception:', err);
+  console.error(' Uncaught Exception:', err);
   gracefulShutdown('Uncaught Exception');
 });
 
