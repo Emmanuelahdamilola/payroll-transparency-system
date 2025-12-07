@@ -25,8 +25,8 @@ export const validateEnv = (): void => {
   const missing = required.filter(key => !config[key]);
 
   if (missing.length > 0) {
-    console.warn(`⚠️  Warning: Missing environment variables: ${missing.join(', ')}`);
-    console.warn('⚠️  Some features may not work correctly.');
+    console.warn(`Warning: Missing environment variables: ${missing.join(', ')}`);
+    console.warn('Warning: Some features may not work correctly.');
   }
 };
 
