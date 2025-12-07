@@ -52,7 +52,7 @@ export const runAIDetection = async (
   payrollId: string,
   payrollRecords: PayrollRecord[]
 ): Promise<DetectionResult> => {
-  console.log(`🤖 Running AI detection on ${payrollRecords.length} records...`);
+  console.log(` Running AI detection on ${payrollRecords.length} records...`);
 
   const allFlags: IFlag[] = [];
 
@@ -80,7 +80,7 @@ export const runAIDetection = async (
     totalFlags: allFlags.length,
   };
 
-  console.log(`✅ Detection complete: ${allFlags.length} flags created`);
+  console.log(` Detection complete: ${allFlags.length} flags created`);
   console.log(`   - Ghost workers: ${ghostFlags.length}`);
   console.log(`   - Duplicates: ${duplicateFlags.length + fuzzyFlags.length}`);
   console.log(`   - Salary anomalies: ${salaryFlags.length}`);
@@ -117,11 +117,11 @@ async function detectGhostWorkers(
       const flag = await Flag.create({
         payrollId,
         staffHash: record.staffHash,
-        salary: record.salary, // ✅ Add salary
+        salary: record.salary, 
         type: FlagType.GHOST,
         score: 1.0,
-        reason, // ✅ Simple reason
-        aiExplanation, // ✅ Detailed AI explanation
+        reason, 
+        aiExplanation, 
         metadata: {
           salary: record.salary,
           detectionMethod: 'registry_lookup',
@@ -148,11 +148,11 @@ async function detectGhostWorkers(
       const flag = await Flag.create({
         payrollId,
         staffHash: record.staffHash,
-        salary: record.salary, // ✅ Add salary
+        salary: record.salary, 
         type: FlagType.MISSING_REGISTRY,
         score: 0.9,
-        reason, // ✅ Simple reason
-        aiExplanation, // ✅ Detailed AI explanation
+        reason, 
+        aiExplanation, 
         metadata: {
           salary: record.salary,
           grade: staff.grade,
@@ -218,11 +218,11 @@ async function detectDuplicates(
           const flag = await Flag.create({
             payrollId,
             staffHash: staff.staffHash,
-            salary: record.salary, // ✅ Add salary
+            salary: record.salary, 
             type: FlagType.DUPLICATE,
             score: 1.0,
-            reason, // ✅ Simple reason
-            aiExplanation, // ✅ Detailed AI explanation
+            reason, 
+            aiExplanation, 
             metadata: {
               salary: record.salary,
               grade: staff.grade,
@@ -281,11 +281,11 @@ async function detectDuplicates(
             const flag = await Flag.create({
               payrollId,
               staffHash: staff.staffHash,
-              salary: record.salary, // ✅ Add salary
+              salary: record.salary, 
               type: FlagType.DUPLICATE,
               score: 1.0,
-              reason, // ✅ Simple reason
-              aiExplanation, // ✅ Detailed AI explanation
+              reason, 
+              aiExplanation, 
               metadata: {
                 salary: record.salary,
                 grade: staff.grade,
@@ -363,11 +363,11 @@ async function detectFuzzyDuplicates(
           const flag = await Flag.create({
             payrollId,
             staffHash: staff1.staff.staffHash,
-            salary: record1.salary, // ✅ Add salary
+            salary: record1.salary, 
             type: FlagType.DUPLICATE,
             score: similarity,
-            reason, // ✅ Simple reason
-            aiExplanation, // ✅ Detailed AI explanation
+            reason, 
+            aiExplanation, 
             metadata: {
               salary: record1.salary,
               grade: staff1.staff.grade,
@@ -400,23 +400,23 @@ async function detectSalaryAnomalies(
   const staffHashes = records.map((r) => r.staffHash);
   const allStaff = await Staff.find({ staffHash: { $in: staffHashes } });
 
-  console.log(`💰 Checking salary anomalies for ${records.length} records...`);
+  console.log(`Checking salary anomalies for ${records.length} records...`);
 
   for (const record of records) {
     const staff = allStaff.find((s) => s.staffHash === record.staffHash);
     if (!staff) {
-      console.log(`  ⏭️  Skipping ${record.staffHash.substring(0, 8)}... (not in registry)`);
+      console.log(` Skipping ${record.staffHash.substring(0, 8)}... (not in registry)`);
       continue;
     }
 
     const gradeRange = SALARY_RANGES[staff.grade];
 
     if (!gradeRange) {
-      console.log(`  ⚠️  No salary range defined for grade: ${staff.grade}`);
+      console.log(`   No salary range defined for grade: ${staff.grade}`);
       continue;
     }
 
-    console.log(`  📊 Checking ${staff.grade}: ₦${record.salary.toLocaleString()} (Range: ₦${gradeRange.min.toLocaleString()} - ₦${gradeRange.max.toLocaleString()})`);
+    console.log(` Checking ${staff.grade}: ₦${record.salary.toLocaleString()} (Range: ₦${gradeRange.min.toLocaleString()} - ₦${gradeRange.max.toLocaleString()})`);
 
     const isOutOfRange =
       record.salary < gradeRange.min || record.salary > gradeRange.max;
@@ -431,12 +431,12 @@ async function detectSalaryAnomalies(
         deviation = ((gradeRange.min - record.salary) / gradeRange.min) * 100;
         score = Math.min(deviation / 100, 1.0);
         direction = 'below';
-        console.log(`  🚨 BELOW minimum by ${deviation.toFixed(1)}%`);
+        console.log(`  BELOW minimum by ${deviation.toFixed(1)}%`);
       } else {
         deviation = ((record.salary - gradeRange.max) / gradeRange.max) * 100;
         score = Math.min(deviation / 100, 1.0);
         direction = 'above';
-        console.log(`  🚨 ABOVE maximum by ${deviation.toFixed(1)}%`);
+        console.log(`  ABOVE maximum by ${deviation.toFixed(1)}%`);
       }
 
       const reason = `Salary ${direction} expected range by ${deviation.toFixed(1)}%`;
@@ -456,11 +456,11 @@ async function detectSalaryAnomalies(
       const flag = await Flag.create({
         payrollId,
         staffHash: record.staffHash,
-        salary: record.salary, // ✅ Add salary
+        salary: record.salary,
         type: FlagType.ANOMALY,
         score: Math.min(score, 1.0),
-        reason, // ✅ Simple reason
-        aiExplanation, // ✅ Detailed AI explanation
+        reason, 
+        aiExplanation, 
         metadata: {
           salary: record.salary,
           grade: staff.grade,
@@ -475,11 +475,11 @@ async function detectSalaryAnomalies(
 
       flags.push(flag);
     } else {
-      console.log(`  ✅ Salary within range`);
+      console.log(`  Salary within range`);
     }
   }
 
-  console.log(`💰 Salary anomaly detection complete: ${flags.length} anomalies found`);
+  console.log(`Salary anomaly detection complete: ${flags.length} anomalies found`);
   return flags;
 }
 

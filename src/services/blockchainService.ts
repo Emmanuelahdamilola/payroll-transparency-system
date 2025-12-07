@@ -322,7 +322,7 @@ export const revokeStaffOnChain = async (staffHash: string): Promise<{
   ledger: number;
 }> => {
   try {
-    console.log(`\n📝 Revoking staff on blockchain...`);
+    console.log(`\n Revoking staff on blockchain...`);
     
     if (!CONTRACT_ID) {
       throw new Error('Contract ID not configured');
@@ -336,7 +336,7 @@ export const revokeStaffOnChain = async (staffHash: string): Promise<{
 
     const result = await submitTransaction(operation);
     
-    console.log(`✅ Staff revoked successfully!`);
+    console.log(` Staff revoked successfully!`);
     
     return {
       transactionHash: result.transactionHash,
@@ -361,7 +361,7 @@ export const recordPayrollBatchOnChain = async (
   status: 'SUCCESS' | 'FAILED';
 }> => {
   try {
-    console.log(`\n📝 Recording payroll batch on blockchain...`);
+    console.log(`\n Recording payroll batch on blockchain...`);
     console.log(`   Batch Hash: ${batchHash}`);
     console.log(`   Staff Count: ${staffCount}`);
 
@@ -382,12 +382,12 @@ export const recordPayrollBatchOnChain = async (
 
     const result = await submitTransaction(operation);
 
-    console.log(`\n✅ Payroll batch recorded successfully!`);
+    console.log(`\n Payroll batch recorded successfully!`);
     console.log(`   Transaction: ${result.transactionHash}`);
     
     return result;
   } catch (error: any) {
-    console.error('\n❌ Failed to record batch:', error.message);
+    console.error('\n Failed to record batch:', error.message);
     throw error;
   }
 };
