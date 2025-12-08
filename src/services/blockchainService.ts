@@ -245,6 +245,20 @@ export const registerStaffOnChain = async (staffHash: string): Promise<{
       throw new Error('SOROBAN_CONTRACT_ID not configured in .env');
     }
 
+    // ✅ CHECK IF ALREADY REGISTERED
+    console.log('   🔍 Checking if staff already registered...');
+    const isRegistered = await isStaffRegisteredOnChain(staffHash);
+    
+    if (isRegistered) {
+      console.log('   ⚠️  Staff already registered on blockchain');
+      // Return a mock successful response
+      return {
+        transactionHash: `already_registered_${staffHash.substring(0, 16)}`,
+        ledger: 0,
+        status: 'SUCCESS'
+      };
+    }
+
     // Convert hash to bytes32 (same as Ethereum: '0x' + staffHash)
     const hashBytes = hexToBytes32(staffHash);
     
@@ -322,7 +336,7 @@ export const revokeStaffOnChain = async (staffHash: string): Promise<{
   ledger: number;
 }> => {
   try {
-    console.log(`\n Revoking staff on blockchain...`);
+    console.log(`\n⛔ Revoking staff on blockchain...`);
     
     if (!CONTRACT_ID) {
       throw new Error('Contract ID not configured');
@@ -336,7 +350,7 @@ export const revokeStaffOnChain = async (staffHash: string): Promise<{
 
     const result = await submitTransaction(operation);
     
-    console.log(` Staff revoked successfully!`);
+    console.log(`✅ Staff revoked successfully!`);
     
     return {
       transactionHash: result.transactionHash,
@@ -361,12 +375,28 @@ export const recordPayrollBatchOnChain = async (
   status: 'SUCCESS' | 'FAILED';
 }> => {
   try {
-    console.log(`\n Recording payroll batch on blockchain...`);
+    console.log(`\n📝 Recording payroll batch on blockchain...`);
     console.log(`   Batch Hash: ${batchHash}`);
     console.log(`   Staff Count: ${staffCount}`);
 
     if (!CONTRACT_ID) {
       throw new Error('Contract ID not configured');
+    }
+
+    // ✅ CHECK IF ALREADY RECORDED
+    console.log('   🔍 Checking if batch already recorded...');
+    const isRecorded = await isBatchRecordedOnChain(batchHash);
+    
+    if (isRecorded) {
+      console.log('   ⚠️  Batch already recorded on blockchain');
+      console.log('   ℹ️  Skipping duplicate recording (this is normal)');
+      
+      // Return a mock successful response to indicate it's already on chain
+      return {
+        transactionHash: `already_recorded_${batchHash.substring(0, 16)}`,
+        ledger: 0,
+        status: 'SUCCESS'
+      };
     }
 
     const hashBytes = hexToBytes32(batchHash);
@@ -382,12 +412,12 @@ export const recordPayrollBatchOnChain = async (
 
     const result = await submitTransaction(operation);
 
-    console.log(`\n Payroll batch recorded successfully!`);
+    console.log(`\n✅ Payroll batch recorded successfully!`);
     console.log(`   Transaction: ${result.transactionHash}`);
     
     return result;
   } catch (error: any) {
-    console.error('\n Failed to record batch:', error.message);
+    console.error('\n❌ Failed to record batch:', error.message);
     throw error;
   }
 };
