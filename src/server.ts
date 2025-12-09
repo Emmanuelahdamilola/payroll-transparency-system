@@ -52,7 +52,7 @@ const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
   "http://localhost:5000",
-  "https://fortipay.vercel.app",
+  "https://fortipay.onrender.com",
 
   process.env.BACKEND_URL, 
 ].filter(Boolean); 
