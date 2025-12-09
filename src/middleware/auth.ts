@@ -1,9 +1,12 @@
+
 import { Response, NextFunction } from 'express';
 import { AuthRequest, UserRole } from '../types';
 import { verifyToken } from '../utils/auth';
+import User from '../models/User';
 
 /**
  * Middleware to verify JWT token from cookie and attach user to request
+ * Validates token, checks user existence, and ensures account is active
  */
 export const authenticate = async (
   req: AuthRequest,
@@ -40,15 +43,34 @@ export const authenticate = async (
       });
       return;
     }
+
+    // Verify user still exists and is active
+    const user = await User.findById(decoded.id).select('+mustChangePassword');
+    
+    if (!user) {
+      res.status(401).json({
+        success: false,
+        error: 'User account no longer exists'
+      });
+      return;
+    }
+
+    if (!user.isActive) {
+      res.status(403).json({
+        success: false,
+        error: 'Account is deactivated. Contact administrator.'
+      });
+      return;
+    }
     
     // Attach user info to request
     req.user = {
       id: decoded.id,
-      role: decoded.role
+      role: decoded.role as UserRole
     };
     
     if (process.env.NODE_ENV === 'development') {
-      console.log('  - User authenticated:', decoded.id, '-', decoded.role);
+      console.log('  ✓ User authenticated:', decoded.id, '-', decoded.role);
     }
     
     next();
@@ -75,6 +97,7 @@ function extractTokenFromHeader(authHeader?: string): string | null {
 
 /**
  * Middleware to check if user has required role(s)
+ * Usage: authorize(UserRole.ADMIN) or authorize(UserRole.ADMIN, UserRole.AUDITOR)
  */
 export const authorize = (...roles: UserRole[]) => {
   return (req: AuthRequest, res: Response, next: NextFunction): void => {
@@ -94,7 +117,7 @@ export const authorize = (...roles: UserRole[]) => {
       res.status(403).json({
         success: false,
         error: 'Insufficient permissions',
-        message: `This action requires one of the following roles: ${roles.join(', ')}`
+        message: `Access denied. This action requires ${roles.length > 1 ? 'one of the following roles' : 'role'}: ${roles.join(', ')}`
       });
       return;
     }
@@ -104,11 +127,156 @@ export const authorize = (...roles: UserRole[]) => {
 };
 
 /**
+ * Middleware to check if user must change password
+ * Redirects to password change flow if mustChangePassword flag is set
+ * Should be applied AFTER authenticate middleware
+ */
+export const checkPasswordChangeRequired = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        error: 'Authentication required'
+      });
+      return;
+    }
+
+    // Skip check for password change endpoints and profile view
+    const allowedPaths = [
+      '/api/auth/force-change-password',
+      '/api/auth/update-profile',
+      '/api/auth/logout',
+      '/api/auth/profile'
+    ];
+
+    // Check if current path is in allowed paths
+    const isAllowedPath = allowedPaths.some(path => req.path.endsWith(path));
+    
+    if (isAllowedPath) {
+      next();
+      return;
+    }
+
+    // Check if user must change password
+    const user = await User.findById(req.user.id).select('+mustChangePassword');
+    
+    if (user && user.mustChangePassword) {
+      res.status(403).json({
+        success: false,
+        error: 'Password change required',
+        message: 'You must change your password before accessing this resource',
+        mustChangePassword: true
+      });
+      return;
+    }
+
+    next();
+  } catch (error: any) {
+    console.error('❌ Password change check error:', error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+      message: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+/**
  * Middleware to check if user is admin
+ * Shorthand for authorize(UserRole.ADMIN)
  */
 export const requireAdmin = authorize(UserRole.ADMIN);
 
 /**
+ * Middleware to check if user is auditor
+ * Shorthand for authorize(UserRole.AUDITOR)
+ */
+export const requireAuditor = authorize(UserRole.AUDITOR);
+
+/**
  * Middleware to check if user is admin or auditor
+ * Allows both roles to access the endpoint
  */
 export const requireAdminOrAuditor = authorize(UserRole.ADMIN, UserRole.AUDITOR);
+
+/**
+ * Middleware to restrict access to admin routes from auditors
+ * Use this on admin-only routes for explicit denial
+ */
+export const denyAuditor = (req: AuthRequest, res: Response, next: NextFunction): void => {
+  if (req.user?.role === UserRole.AUDITOR) {
+    res.status(403).json({
+      success: false,
+      error: 'Access denied',
+      message: 'Auditors do not have permission to access this resource'
+    });
+    return;
+  }
+  next();
+};
+
+/**
+ * Middleware to restrict access to auditor routes from admins
+ * Use this on auditor-only routes if needed for explicit denial
+ */
+export const denyAdmin = (req: AuthRequest, res: Response, next: NextFunction): void => {
+  if (req.user?.role === UserRole.ADMIN) {
+    res.status(403).json({
+      success: false,
+      error: 'Access denied',
+      message: 'Admins do not have permission to access this resource'
+    });
+    return;
+  }
+  next();
+};
+
+/**
+ * Optional middleware for rate limiting per user
+ * Can be used to prevent abuse on sensitive endpoints
+ */
+export const userRateLimit = (maxRequests: number, windowMs: number) => {
+  const requestCounts = new Map<string, { count: number; resetTime: number }>();
+
+  return (req: AuthRequest, res: Response, next: NextFunction): void => {
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        error: 'Authentication required for rate limiting'
+      });
+      return;
+    }
+
+    const userId = req.user.id;
+    const now = Date.now();
+    const userRecord = requestCounts.get(userId);
+
+    if (!userRecord || now > userRecord.resetTime) {
+      // Create new record or reset expired one
+      requestCounts.set(userId, {
+        count: 1,
+        resetTime: now + windowMs
+      });
+      next();
+      return;
+    }
+
+    if (userRecord.count >= maxRequests) {
+      const retryAfter = Math.ceil((userRecord.resetTime - now) / 1000);
+      res.status(429).json({
+        success: false,
+        error: 'Rate limit exceeded',
+        message: `Too many requests. Please try again in ${retryAfter} seconds.`,
+        retryAfter
+      });
+      return;
+    }
+
+    userRecord.count++;
+    next();
+  };
+};

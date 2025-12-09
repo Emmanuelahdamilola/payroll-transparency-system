@@ -1,8 +1,90 @@
+// // src/routes/auditorRoutes.ts
+// import { Router } from 'express';
+// import {
+//   authenticate,
+//   requireAuditor,
+//   checkPasswordChangeRequired
+// } from '../middleware/auth';
+
+// const router = Router();
+
+// /**
+//  * AUDITOR ONLY ROUTES
+//  * These routes are exclusively for auditors
+//  * Admins will receive 403 Forbidden if they try to access these routes
+//  */
+
+// /**
+//  * Get auditor dashboard
+//  * GET /api/auditor/dashboard
+//  * Auth: Required (Auditor only)
+//  */
+// router.get(
+//   '/dashboard',
+//   authenticate,
+//   checkPasswordChangeRequired,
+//   requireAuditor,
+//   (req, res) => {
+//     res.json({
+//       success: true,
+//       message: 'Auditor dashboard accessed',
+//       data: {
+//         // Add auditor-specific dashboard data here
+//         message: 'Welcome to the auditor dashboard'
+//       }
+//     });
+//   }
+// );
+
+// /**
+//  * Get audit reports
+//  * GET /api/auditor/reports
+//  * Auth: Required (Auditor only)
+//  */
+// router.get(
+//   '/reports',
+//   authenticate,
+//   checkPasswordChangeRequired,
+//   requireAuditor,
+//   (req, res) => {
+//     res.json({
+//       success: true,
+//       message: 'Audit reports retrieved',
+//       data: {
+//         reports: []
+//       }
+//     });
+//   }
+// );
+
+// /**
+//  * Submit audit finding
+//  * POST /api/auditor/findings
+//  * Auth: Required (Auditor only)
+//  */
+// router.post(
+//   '/findings',
+//   authenticate,
+//   checkPasswordChangeRequired,
+//   requireAuditor,
+//   (req, res) => {
+//     res.json({
+//       success: true,
+//       message: 'Audit finding submitted',
+//       data: req.body
+//     });
+//   }
+// );
+
+// export default router;
+
+
+
 // src/controllers/authController.ts
 import { Request, Response } from "express";
 import User from "../models/User";
 import { generateToken } from "../utils/auth";
-import { UserRole } from "../types";
+import { UserRole, VALIDATION_RULES } from "../types";
 import { AuthRequest } from '../types';
 import crypto from 'crypto';
 
@@ -16,20 +98,97 @@ const getCookieOptions = () => ({
 });
 
 /**
+ * Validate password strength
+ */
+const validatePassword = (password: string): { isValid: boolean; errors: string[] } => {
+  const errors: string[] = [];
+
+  if (password.length < VALIDATION_RULES.PASSWORD_MIN_LENGTH) {
+    errors.push(`Password must be at least ${VALIDATION_RULES.PASSWORD_MIN_LENGTH} characters long`);
+  }
+
+  if (password.length > VALIDATION_RULES.PASSWORD_MAX_LENGTH) {
+    errors.push(`Password must not exceed ${VALIDATION_RULES.PASSWORD_MAX_LENGTH} characters`);
+  }
+
+  if (!/[a-z]/.test(password)) {
+    errors.push('Password must contain at least one lowercase letter');
+  }
+
+  if (!/[A-Z]/.test(password)) {
+    errors.push('Password must contain at least one uppercase letter');
+  }
+
+  if (!/[0-9]/.test(password)) {
+    errors.push('Password must contain at least one number');
+  }
+
+  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+    errors.push('Password must contain at least one special character');
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors
+  };
+};
+
+/**
  * Generate secure temporary password
  * Uses crypto for cryptographically secure random generation
  */
 const generateTemporaryPassword = (): string => {
-  const length = 12;
-  const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
-  let password = '';
+  const length = 16; // Increased from 12 for better security
+  const lowercase = 'abcdefghijklmnopqrstuvwxyz';
+  const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const numbers = '0123456789';
+  const special = '!@#$%^&*';
   
-  for (let i = 0; i < length; i++) {
-    const randomIndex = crypto.randomInt(0, charset.length);
-    password += charset[randomIndex];
+  // Ensure at least one character from each category
+  let password = '';
+  password += lowercase[crypto.randomInt(0, lowercase.length)];
+  password += uppercase[crypto.randomInt(0, uppercase.length)];
+  password += numbers[crypto.randomInt(0, numbers.length)];
+  password += special[crypto.randomInt(0, special.length)];
+  
+  // Fill the rest randomly
+  const allChars = lowercase + uppercase + numbers + special;
+  for (let i = password.length; i < length; i++) {
+    password += allChars[crypto.randomInt(0, allChars.length)];
   }
   
-  return password;
+  // Shuffle the password
+  return password.split('').sort(() => Math.random() - 0.5).join('');
+};
+
+/**
+ * Validate name field
+ */
+const validateName = (name: string, fieldName: string): { isValid: boolean; error?: string } => {
+  const trimmed = name.trim();
+  
+  if (trimmed.length < VALIDATION_RULES.NAME_MIN_LENGTH) {
+    return {
+      isValid: false,
+      error: `${fieldName} must be at least ${VALIDATION_RULES.NAME_MIN_LENGTH} characters`
+    };
+  }
+  
+  if (trimmed.length > VALIDATION_RULES.NAME_MAX_LENGTH) {
+    return {
+      isValid: false,
+      error: `${fieldName} must not exceed ${VALIDATION_RULES.NAME_MAX_LENGTH} characters`
+    };
+  }
+  
+  if (!/^[a-zA-Z\s'-]+$/.test(trimmed)) {
+    return {
+      isValid: false,
+      error: `${fieldName} can only contain letters, spaces, hyphens, and apostrophes`
+    };
+  }
+  
+  return { isValid: true };
 };
 
 /**
@@ -49,11 +208,32 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Password strength validation
-    if (password.length < 8) {
+    // Validate password strength
+    const passwordValidation = validatePassword(password);
+    if (!passwordValidation.isValid) {
       res.status(400).json({
         success: false,
-        error: "Password must be at least 8 characters long",
+        error: "Password does not meet security requirements",
+        details: passwordValidation.errors
+      });
+      return;
+    }
+
+    // Validate names
+    const firstNameValidation = validateName(firstName, 'First name');
+    if (!firstNameValidation.isValid) {
+      res.status(400).json({
+        success: false,
+        error: firstNameValidation.error
+      });
+      return;
+    }
+
+    const lastNameValidation = validateName(lastName, 'Last name');
+    if (!lastNameValidation.isValid) {
+      res.status(400).json({
+        success: false,
+        error: lastNameValidation.error
       });
       return;
     }
@@ -61,7 +241,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     const normalizedEmail = email.toLowerCase().trim();
 
     // Email format validation
-    const emailRegex = /^\S+@\S+\.\S+$/;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(normalizedEmail)) {
       res.status(400).json({
         success: false,
@@ -139,94 +319,6 @@ export const register = async (req: Request, res: Response): Promise<void> => {
  * Login user
  * POST /api/auth/login
  */
-// export const login = async (req: Request, res: Response): Promise<void> => {
-//   try {
-//     const { email, password } = req.body;
-
-//     // Validation
-//     if (!email || !password) {
-//       res.status(400).json({
-//         success: false,
-//         error: "Please provide email and password",
-//       });
-//       return;
-//     }
-
-//     // Find user and explicitly select password and mustChangePassword fields
-//     const user = await User.findOne({ email: email.toLowerCase().trim() })
-//       .select("+password");
-
-//     if (!user) {
-//       res.status(401).json({
-//         success: false,
-//         error: "Invalid credentials",
-//       });
-//       return;
-//     }
-
-//     // Check if account is active
-//     if (!user.isActive) {
-//       res.status(403).json({
-//         success: false,
-//         error: "Account is deactivated. Contact administrator.",
-//       });
-//       return;
-//     }
-
-//     // Verify password using model method
-//     const isPasswordValid = await user.comparePassword(password);
-
-//     if (!isPasswordValid) {
-//       res.status(401).json({
-//         success: false,
-//         error: "Invalid credentials",
-//       });
-//       return;
-//     }
-
-//     // Update last login timestamp
-//     user.lastLogin = new Date();
-//     await user.save();
-
-//     // Generate JWT token
-//     const token = generateToken({
-//       id: user._id.toString(),
-//       email: user.email,
-//       role: user.role,
-//     });
-
-//     // Set authentication cookie
-//     res.cookie("token", token, getCookieOptions());
-
-//     res.status(200).json({
-//       success: true,
-//       message: "Login successful",
-//       data: {
-//         user: {
-//           id: user._id,
-//           email: user.email,
-//           firstName: user.firstName,
-//           lastName: user.lastName,
-//           role: user.role,
-//           lastLogin: user.lastLogin,
-//           mustChangePassword: user.mustChangePassword // Critical: Include this flag
-//         },
-//       },
-//       timestamp: new Date().toISOString(),
-//     });
-//   } catch (error: any) {
-//     console.error("Login error:", error);
-//     res.status(500).json({
-//       success: false,
-//       error: "Login failed",
-//       message: process.env.NODE_ENV === 'development' ? error.message : undefined,
-//     });
-//   }
-// };
-
-
-// Fix for the login function - line ~140
-
 export const login = async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password } = req.body;
@@ -240,9 +332,9 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Find user and explicitly select password AND mustChangePassword fields
+    // Find user and explicitly select password and mustChangePassword fields
     const user = await User.findOne({ email: email.toLowerCase().trim() })
-      .select("+password +mustChangePassword"); // ← Add +mustChangePassword here!
+      .select("+password +mustChangePassword");
 
     if (!user) {
       res.status(401).json({
@@ -297,7 +389,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
           lastName: user.lastName,
           role: user.role,
           lastLogin: user.lastLogin,
-          mustChangePassword: user.mustChangePassword // Now this will be included!
+          mustChangePassword: user.mustChangePassword // Critical: Include this flag
         },
       },
       timestamp: new Date().toISOString(),
@@ -341,8 +433,6 @@ export const getProfile = async (req: AuthRequest, res: Response): Promise<void>
       });
       return;
     }
-
-    // const user = await User.findById(userId);
 
     const user = await User.findById(userId).select('+mustChangePassword');
 
@@ -397,10 +487,29 @@ export const createAuditor = async (req: AuthRequest, res: Response): Promise<vo
       return;
     }
 
+    // Validate names
+    const firstNameValidation = validateName(firstName, 'First name');
+    if (!firstNameValidation.isValid) {
+      res.status(400).json({
+        success: false,
+        error: firstNameValidation.error
+      });
+      return;
+    }
+
+    const lastNameValidation = validateName(lastName, 'Last name');
+    if (!lastNameValidation.isValid) {
+      res.status(400).json({
+        success: false,
+        error: lastNameValidation.error
+      });
+      return;
+    }
+
     const normalizedEmail = email.toLowerCase().trim();
 
     // Email format validation
-    const emailRegex = /^\S+@\S+\.\S+$/;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(normalizedEmail)) {
       res.status(400).json({
         success: false,
@@ -444,7 +553,7 @@ export const createAuditor = async (req: AuthRequest, res: Response): Promise<vo
           lastName: auditor.lastName,
           role: auditor.role,
           isActive: auditor.isActive,
-          mustChangePassword: auditor.mustChangePassword,
+          mustChangePassword: true,
         },
         temporaryPassword, // Return this for admin to share with auditor
         note: "User must change password on first login"
@@ -464,8 +573,6 @@ export const createAuditor = async (req: AuthRequest, res: Response): Promise<vo
 /**
  * Update user profile (name and/or password)
  * PUT /api/auth/update-profile
- * Note: Admins use this to change their password voluntarily
- * Auditors should use /force-change-password for their first password change
  */
 export const updateProfile = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -473,7 +580,6 @@ export const updateProfile = async (req: AuthRequest, res: Response): Promise<vo
     const { firstName, lastName, currentPassword, newPassword } = req.body;
 
     // Find user with password field
-    // const user = await User.findById(userId).select('+password');
     const user = await User.findById(userId).select('+password +mustChangePassword');
 
     if (!user) {
@@ -497,17 +603,39 @@ export const updateProfile = async (req: AuthRequest, res: Response): Promise<vo
     let updated = false;
 
     // Update name fields if provided
-    if (firstName && firstName.trim() !== user.firstName) {
-      user.firstName = firstName.trim();
-      updated = true;
+    if (firstName) {
+      const validation = validateName(firstName, 'First name');
+      if (!validation.isValid) {
+        res.status(400).json({
+          success: false,
+          error: validation.error
+        });
+        return;
+      }
+      
+      if (firstName.trim() !== user.firstName) {
+        user.firstName = firstName.trim();
+        updated = true;
+      }
     }
     
-    if (lastName && lastName.trim() !== user.lastName) {
-      user.lastName = lastName.trim();
-      updated = true;
+    if (lastName) {
+      const validation = validateName(lastName, 'Last name');
+      if (!validation.isValid) {
+        res.status(400).json({
+          success: false,
+          error: validation.error
+        });
+        return;
+      }
+      
+      if (lastName.trim() !== user.lastName) {
+        user.lastName = lastName.trim();
+        updated = true;
+      }
     }
 
-    // Update password if provided (for admins only or auditors after first change)
+    // Update password if provided
     if (newPassword) {
       if (!currentPassword) {
         res.status(400).json({
@@ -518,10 +646,12 @@ export const updateProfile = async (req: AuthRequest, res: Response): Promise<vo
       }
 
       // Validate new password strength
-      if (newPassword.length < 8) {
+      const passwordValidation = validatePassword(newPassword);
+      if (!passwordValidation.isValid) {
         res.status(400).json({
           success: false,
-          error: "New password must be at least 8 characters long",
+          error: "New password does not meet security requirements",
+          details: passwordValidation.errors
         });
         return;
       }
@@ -532,6 +662,15 @@ export const updateProfile = async (req: AuthRequest, res: Response): Promise<vo
         res.status(401).json({
           success: false,
           error: "Current password is incorrect",
+        });
+        return;
+      }
+
+      // Ensure new password is different
+      if (currentPassword === newPassword) {
+        res.status(400).json({
+          success: false,
+          error: "New password must be different from current password",
         });
         return;
       }
@@ -577,111 +716,6 @@ export const updateProfile = async (req: AuthRequest, res: Response): Promise<vo
 /**
  * Force password change (for auditors with temporary passwords only)
  * PUT /api/auth/force-change-password
- * This endpoint is specifically for auditors who were created by admin
- */
-// export const forceChangePassword = async (req: AuthRequest, res: Response): Promise<void> => {
-//   try {
-//     const userId = req.user!.id;
-//     const { currentPassword, newPassword } = req.body;
-
-//     // Validation
-//     if (!currentPassword || !newPassword) {
-//       res.status(400).json({
-//         success: false,
-//         error: "Both current and new passwords are required",
-//       });
-//       return;
-//     }
-
-//     // Validate new password strength
-//     if (newPassword.length < 8) {
-//       res.status(400).json({
-//         success: false,
-//         error: "New password must be at least 8 characters long",
-//       });
-//       return;
-//     }
-
-//     // Ensure new password is different from current
-//     if (currentPassword === newPassword) {
-//       res.status(400).json({
-//         success: false,
-//         error: "New password must be different from current password",
-//       });
-//       return;
-//     }
-
-//     // Find user with password field
-//     const user = await User.findById(userId).select('+password');
-
-//     if (!user) {
-//       res.status(404).json({
-//         success: false,
-//         error: "User not found",
-//       });
-//       return;
-//     }
-
-//     // Only auditors with mustChangePassword flag should use this endpoint
-//     if (!user.mustChangePassword) {
-//       res.status(400).json({
-//         success: false,
-//         error: "You don't need to force change your password. Use /api/auth/update-profile instead.",
-//       });
-//       return;
-//     }
-
-//     // Additional check: Only auditors should have mustChangePassword flag
-//     if (user.role !== UserRole.AUDITOR) {
-//       res.status(403).json({
-//         success: false,
-//         error: "This endpoint is only for auditors with temporary passwords",
-//       });
-//       return;
-//     }
-
-//     // Verify current (temporary) password
-//     const isPasswordValid = await user.comparePassword(currentPassword);
-//     if (!isPasswordValid) {
-//       res.status(401).json({
-//         success: false,
-//         error: "Current password is incorrect",
-//       });
-//       return;
-//     }
-
-//     // Set new password (will be hashed by pre-save hook)
-//     user.password = newPassword;
-    
-//     // Clear the mustChangePassword flag
-//     user.mustChangePassword = false;
-    
-//     await user.save();
-
-//     res.status(200).json({
-//       success: true,
-//       message: "Password changed successfully. You now have full access to the system.",
-//       data: {
-//         mustChangePassword: false,
-//       },
-//       timestamp: new Date().toISOString(),
-//     });
-//   } catch (error: any) {
-//     console.error("Force change password error:", error);
-//     res.status(500).json({
-//       success: false,
-//       error: "Failed to change password",
-//       message: process.env.NODE_ENV === 'development' ? error.message : undefined,
-//     });
-//   }
-// };
-
-
-
-/**
- * Force password change (for auditors with temporary passwords only)
- * PUT /api/auth/force-change-password
- * This endpoint is specifically for auditors who were created by admin
  */
 export const forceChangePassword = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -698,10 +732,12 @@ export const forceChangePassword = async (req: AuthRequest, res: Response): Prom
     }
 
     // Validate new password strength
-    if (newPassword.length < 8) {
+    const passwordValidation = validatePassword(newPassword);
+    if (!passwordValidation.isValid) {
       res.status(400).json({
         success: false,
-        error: "New password must be at least 8 characters long",
+        error: "New password does not meet security requirements",
+        details: passwordValidation.errors
       });
       return;
     }
@@ -715,7 +751,7 @@ export const forceChangePassword = async (req: AuthRequest, res: Response): Prom
       return;
     }
 
-    // Find user with password AND mustChangePassword fields - THIS IS THE FIX!
+    // Find user with password field
     const user = await User.findById(userId).select('+password +mustChangePassword');
 
     if (!user) {
@@ -726,7 +762,7 @@ export const forceChangePassword = async (req: AuthRequest, res: Response): Prom
       return;
     }
 
-    // Only auditors with mustChangePassword flag should use this endpoint
+    // Only users with mustChangePassword flag should use this endpoint
     if (!user.mustChangePassword) {
       res.status(400).json({
         success: false,
@@ -779,39 +815,40 @@ export const forceChangePassword = async (req: AuthRequest, res: Response): Prom
     });
   }
 };
+
 /**
  * List all users (Admin only)
  * GET /api/auth/users
  */
 export const listUsers = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(
+      VALIDATION_RULES.PAGINATION_MAX_LIMIT,
+      Math.max(1, parseInt(req.query.limit as string) || VALIDATION_RULES.PAGINATION_DEFAULT_LIMIT)
+    );
     const role = req.query.role as string;
     const search = req.query.search as string;
-    
-    // Validate pagination
-    if (page < 1 || limit < 1 || limit > 100) {
-      res.status(400).json({
-        success: false,
-        error: "Invalid pagination parameters (page >= 1, limit 1-100)",
-      });
-      return;
-    }
+    const isActive = req.query.isActive as string;
 
     const skip = (page - 1) * limit;
 
     // Build query
     const query: any = {};
     
-    // Filter by role if provided
+    // Filter by role if provided and valid
     if (role && Object.values(UserRole).includes(role as UserRole)) {
       query.role = role;
     }
     
+    // Filter by active status if provided
+    if (isActive !== undefined && (isActive === 'true' || isActive === 'false')) {
+      query.isActive = isActive === 'true';
+    }
+    
     // Search by name or email if provided
     if (search && search.trim()) {
-      const searchRegex = new RegExp(search.trim(), 'i');
+      const searchRegex = new RegExp(search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
       query.$or = [
         { firstName: searchRegex },
         { lastName: searchRegex },
@@ -820,13 +857,17 @@ export const listUsers = async (req: AuthRequest, res: Response): Promise<void> 
     }
 
     // Fetch users
-    const users = await User.find(query)
-      .select('-password')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
+    const [users, total] = await Promise.all([
+      User.find(query)
+        .select('-password')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      User.countDocuments(query)
+    ]);
 
-    const total = await User.countDocuments(query);
+    const pages = Math.ceil(total / limit);
 
     res.status(200).json({
       success: true,
@@ -836,8 +877,8 @@ export const listUsers = async (req: AuthRequest, res: Response): Promise<void> 
           page,
           limit,
           total,
-          pages: Math.ceil(total / limit),
-          hasMore: page * limit < total
+          pages,
+          hasMore: page < pages
         }
       },
       timestamp: new Date().toISOString(),

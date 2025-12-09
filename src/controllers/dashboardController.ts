@@ -1,3 +1,5 @@
+
+// src/controllers/dashboardController.ts
 import { Response } from 'express';
 import { AuthRequest } from '../types';
 import Staff from '../models/Staff';
@@ -11,31 +13,45 @@ import mongoose from 'mongoose';
  */
 export const getAdminSummary = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    // Get total counts
-    const totalStaff = await Staff.countDocuments();
-    const totalBatches = await PayrollBatch.countDocuments();
-    const totalAnomalies = await Flag.countDocuments();
-    const pendingFlags = await Flag.countDocuments({ reviewed: false });
+    // Get total counts in parallel for better performance
+    const [
+      totalStaff,
+      totalBatches,
+      totalAnomalies,
+      pendingFlags,
+      verifiedStaff
+    ] = await Promise.all([
+      Staff.countDocuments(),
+      PayrollBatch.countDocuments(),
+      Flag.countDocuments(),
+      Flag.countDocuments({ reviewed: false }),
+      Staff.countDocuments({ verified: true })
+    ]);
 
     // Get latest batches
     const latestBatches = await PayrollBatch.find()
-      .populate('uploadedBy', 'firstName lastName')
+      .populate('uploadedBy', 'firstName lastName email')
       .select('batchHash month year totalStaff totalAmount status blockchainTx createdAt')
       .sort({ createdAt: -1 })
-      .limit(5);
+      .limit(5)
+      .lean();
 
     // Get latest blockchain transactions
-    const latestTransactions = await PayrollBatch.find({ blockchainTx: { $exists: true, $ne: null } })
-      .select('batchHash blockchainTx createdAt status')
+    const latestTransactions = await PayrollBatch.find({ 
+      blockchainTx: { $exists: true, $ne: null } 
+    })
+      .select('batchHash blockchainTx createdAt status month year')
       .sort({ createdAt: -1 })
-      .limit(5);
+      .limit(5)
+      .lean();
 
     // Get last verification status
     const lastBatch = await PayrollBatch.findOne()
       .sort({ createdAt: -1 })
-      .select('status month year flaggedCount createdAt');
+      .select('status month year flaggedCount createdAt totalStaff totalAmount')
+      .lean();
 
-    // Get monthly statistics
+    // Get monthly statistics for current year
     const currentYear = new Date().getFullYear();
     const monthlyStats = await PayrollBatch.aggregate([
       {
@@ -49,7 +65,7 @@ export const getAdminSummary = async (req: AuthRequest, res: Response): Promise<
           totalAmount: { $sum: '$totalAmount' },
           totalStaff: { $sum: '$totalStaff' },
           totalFlags: { $sum: '$flaggedCount' },
-          count: { $sum: 1 }
+          batchCount: { $sum: 1 }
         }
       },
       { $sort: { _id: 1 } }
@@ -63,7 +79,10 @@ export const getAdminSummary = async (req: AuthRequest, res: Response): Promise<
           totalBatches,
           totalAnomalies,
           pendingFlags,
-          verifiedStaff: await Staff.countDocuments({ verified: true })
+          verifiedStaff,
+          verificationRate: totalStaff > 0 
+            ? parseFloat(((verifiedStaff / totalStaff) * 100).toFixed(2))
+            : 0
         },
         latestBatches,
         latestTransactions,
@@ -72,14 +91,32 @@ export const getAdminSummary = async (req: AuthRequest, res: Response): Promise<
           month: lastBatch.month,
           year: lastBatch.year,
           flaggedCount: lastBatch.flaggedCount,
+          totalStaff: lastBatch.totalStaff,
+          totalAmount: lastBatch.totalAmount,
           date: lastBatch.createdAt
         } : null,
         monthlyStats,
         quickActions: [
-          { label: 'Upload Payroll CSV', action: 'upload_payroll' },
-          { label: 'Register New Staff', action: 'register_staff' },
-          { label: 'View Anomalies', action: 'view_flags' },
-          { label: 'Blockchain Explorer', action: 'blockchain_explorer' }
+          { 
+            label: 'Upload Payroll CSV', 
+            action: 'upload_payroll',
+            description: 'Upload new payroll batch for verification'
+          },
+          { 
+            label: 'Register New Staff', 
+            action: 'register_staff',
+            description: 'Add new staff member to registry'
+          },
+          { 
+            label: 'View Anomalies', 
+            action: 'view_flags',
+            description: 'Review flagged payroll records'
+          },
+          { 
+            label: 'Blockchain Explorer', 
+            action: 'blockchain_explorer',
+            description: 'View blockchain transaction history'
+          }
         ]
       },
       timestamp: new Date().toISOString()
@@ -89,7 +126,7 @@ export const getAdminSummary = async (req: AuthRequest, res: Response): Promise<
     res.status(500).json({
       success: false,
       error: 'Failed to retrieve admin dashboard summary',
-      message: error.message
+      message: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -100,15 +137,22 @@ export const getAdminSummary = async (req: AuthRequest, res: Response): Promise<
  */
 export const getAuditorSummary = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    // Get flag counts
-    const totalFlags = await Flag.countDocuments();
-    const pendingReviews = await Flag.countDocuments({ reviewed: false });
-    const confirmedFlags = await Flag.countDocuments({ resolution: 'confirmed' });
-    const falsePositives = await Flag.countDocuments({ resolution: 'false_positive' });
-
-    // Get verified batches
-    const verifiedBatches = await PayrollBatch.countDocuments({ status: 'verified' });
-    const pendingBatches = await PayrollBatch.countDocuments({ status: 'processing' });
+    // Get flag counts in parallel
+    const [
+      totalFlags,
+      pendingReviews,
+      confirmedFlags,
+      falsePositives,
+      verifiedBatches,
+      pendingBatches
+    ] = await Promise.all([
+      Flag.countDocuments(),
+      Flag.countDocuments({ reviewed: false }),
+      Flag.countDocuments({ resolution: 'confirmed' }),
+      Flag.countDocuments({ resolution: 'false_positive' }),
+      PayrollBatch.countDocuments({ status: 'verified' }),
+      PayrollBatch.countDocuments({ status: 'processing' })
+    ]);
 
     // Get flags by category
     const flagsByCategory = await Flag.aggregate([
@@ -121,16 +165,18 @@ export const getAuditorSummary = async (req: AuthRequest, res: Response): Promis
             $sum: { $cond: [{ $eq: ['$reviewed', false] }, 1, 0] }
           }
         }
-      }
+      },
+      { $sort: { count: -1 } }
     ]);
 
-    // Get recent reviews
+    // Get recent reviews (only those reviewed by current auditor if possible)
     const recentReviews = await Flag.find({ reviewed: true })
-      .populate('reviewedBy', 'firstName lastName')
+      .populate('reviewedBy', 'firstName lastName email')
       .populate('payrollId', 'month year batchHash')
       .select('staffHash type resolution reviewedAt resolutionNotes score')
       .sort({ reviewedAt: -1 })
-      .limit(10);
+      .limit(10)
+      .lean();
 
     // Get high priority flags (high score, not reviewed)
     const highPriorityFlags = await Flag.find({
@@ -140,7 +186,8 @@ export const getAuditorSummary = async (req: AuthRequest, res: Response): Promis
       .populate('payrollId', 'month year batchHash')
       .select('staffHash type reason score createdAt')
       .sort({ score: -1 })
-      .limit(5);
+      .limit(5)
+      .lean();
 
     // Get flags trend (last 6 months)
     const sixMonthsAgo = new Date();
@@ -164,11 +211,25 @@ export const getAuditorSummary = async (req: AuthRequest, res: Response): Promis
           },
           falsePositives: {
             $sum: { $cond: [{ $eq: ['$resolution', 'false_positive'] }, 1, 0] }
+          },
+          pending: {
+            $sum: { $cond: [{ $eq: ['$reviewed', false] }, 1, 0] }
           }
         }
       },
       { $sort: { '_id.year': 1, '_id.month': 1 } }
     ]);
+
+    // Calculate review rate
+    const reviewRate = totalFlags > 0 
+      ? parseFloat(((totalFlags - pendingReviews) / totalFlags * 100).toFixed(1))
+      : 0;
+
+    // Calculate accuracy (confirmed / total reviewed)
+    const totalReviewed = confirmedFlags + falsePositives;
+    const accuracy = totalReviewed > 0
+      ? parseFloat((confirmedFlags / totalReviewed * 100).toFixed(1))
+      : 0;
 
     res.status(200).json({
       success: true,
@@ -180,7 +241,8 @@ export const getAuditorSummary = async (req: AuthRequest, res: Response): Promis
           falsePositives,
           verifiedBatches,
           pendingBatches,
-          reviewRate: totalFlags > 0 ? ((totalFlags - pendingReviews) / totalFlags * 100).toFixed(1) : 0
+          reviewRate,
+          accuracy
         },
         flagsByCategory,
         recentReviews,
@@ -194,7 +256,7 @@ export const getAuditorSummary = async (req: AuthRequest, res: Response): Promis
     res.status(500).json({
       success: false,
       error: 'Failed to retrieve auditor dashboard summary',
-      message: error.message
+      message: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -211,7 +273,7 @@ export const getSystemStats = async (req: AuthRequest, res: Response): Promise<v
       totalFlags,
       totalUsers,
       blockchainTxCount,
-      avgProcessingTime
+      avgProcessingTimeResult
     ] = await Promise.all([
       Staff.countDocuments(),
       PayrollBatch.countDocuments(),
@@ -220,11 +282,17 @@ export const getSystemStats = async (req: AuthRequest, res: Response): Promise<v
       PayrollBatch.countDocuments({ blockchainTx: { $exists: true, $ne: null } }),
       PayrollBatch.aggregate([
         {
+          $match: {
+            updatedAt: { $exists: true },
+            createdAt: { $exists: true }
+          }
+        },
+        {
           $project: {
             processingTime: {
               $divide: [
                 { $subtract: ['$updatedAt', '$createdAt'] },
-                1000
+                1000 // Convert to seconds
               ]
             }
           }
@@ -238,32 +306,65 @@ export const getSystemStats = async (req: AuthRequest, res: Response): Promise<v
       ])
     ]);
 
-    // Get database size
+    // Get database statistics
     const dbStats = mongoose.connection.db ? await mongoose.connection.db.stats() : null;
+
+    // Calculate blockchain success rate
+    const blockchainSuccessRate = totalBatches > 0 
+      ? parseFloat(((blockchainTxCount / totalBatches) * 100).toFixed(2))
+      : 0;
+
+    // Get memory usage
+    const memUsage = process.memoryUsage();
+    const formatBytes = (bytes: number) => {
+      return (bytes / 1024 / 1024).toFixed(2); // Convert to MB
+    };
+
+    // Get active users count
+    const activeUsers = await mongoose.connection.collection('users').countDocuments({ 
+      isActive: true 
+    });
 
     res.status(200).json({
       success: true,
       data: {
         systemHealth: {
           status: 'operational',
-          uptime: process.uptime(),
-          memoryUsage: process.memoryUsage(),
-          dbSize: dbStats?.dataSize || 0,
-          dbStorageSize: dbStats?.storageSize || 0
+          uptime: Math.floor(process.uptime()), // in seconds
+          uptimeFormatted: formatUptime(process.uptime()),
+          memoryUsage: {
+            rss: `${formatBytes(memUsage.rss)} MB`,
+            heapTotal: `${formatBytes(memUsage.heapTotal)} MB`,
+            heapUsed: `${formatBytes(memUsage.heapUsed)} MB`,
+            external: `${formatBytes(memUsage.external)} MB`
+          },
+          database: {
+            connected: mongoose.connection.readyState === 1,
+            dataSize: dbStats ? `${(dbStats.dataSize / 1024 / 1024).toFixed(2)} MB` : 'N/A',
+            storageSize: dbStats ? `${(dbStats.storageSize / 1024 / 1024).toFixed(2)} MB` : 'N/A',
+            collections: dbStats?.collections || 0,
+            indexes: dbStats?.indexes || 0
+          }
         },
         statistics: {
           totalStaff,
           totalBatches,
           totalFlags,
           totalUsers,
+          activeUsers,
           blockchainTxCount,
-          avgProcessingTime: avgProcessingTime[0]?.avgTime || 0
+          avgProcessingTime: avgProcessingTimeResult[0]?.avgTime 
+            ? `${avgProcessingTimeResult[0].avgTime.toFixed(2)}s` 
+            : '0s'
         },
         performance: {
-          apiResponseTime: 'varies per endpoint',
-          blockchainSuccessRate: totalBatches > 0 
-            ? ((blockchainTxCount / totalBatches) * 100).toFixed(1) + '%'
-            : '0%'
+          blockchainSuccessRate: `${blockchainSuccessRate}%`,
+          flagRate: totalBatches > 0 
+            ? `${((totalFlags / totalBatches) * 100).toFixed(2)}%`
+            : '0%',
+          averageBatchSize: totalBatches > 0 
+            ? Math.round(totalStaff / totalBatches)
+            : 0
         }
       },
       timestamp: new Date().toISOString()
@@ -273,7 +374,25 @@ export const getSystemStats = async (req: AuthRequest, res: Response): Promise<v
     res.status(500).json({
       success: false,
       error: 'Failed to retrieve system statistics',
-      message: error.message
+      message: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
+
+/**
+ * Helper function to format uptime
+ */
+function formatUptime(seconds: number): string {
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+
+  const parts = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0) parts.push(`${minutes}m`);
+  if (secs > 0 || parts.length === 0) parts.push(`${secs}s`);
+
+  return parts.join(' ');
+}

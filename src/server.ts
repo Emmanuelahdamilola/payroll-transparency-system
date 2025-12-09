@@ -20,6 +20,8 @@ import flagRoutes from './routes/flagRoutes';
 import dashboardRoutes from './routes/dashboardRoutes';
 import blockchainRoutes from './routes/blockchainRoutes';
 import auditRoutes from './routes/auditRoutes';
+// import adminRoutes from './routes/adminRoutes';
+// import { auditorRoutes } from './routes/auditorRoutes';
 
 // Create Express app
 const app = express();
@@ -151,6 +153,8 @@ app.use('/api/flags', flagRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/blockchain', blockchainRoutes);
 app.use('/api/audit', auditRoutes); 
+// app.use('/api/admin', adminRoutes);
+// app.use('/api/auditor', auditorRoutes);
 
 // ============================================
 // ERROR HANDLING

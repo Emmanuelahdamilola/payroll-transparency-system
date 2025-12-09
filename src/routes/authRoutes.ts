@@ -1,31 +1,14 @@
 
-// import { Router } from 'express';
-// import * as authController from '../controllers/authController';
-// import { authenticate, requireAdmin } from '../middleware/auth';
-
-// const router = Router();
-
-// // Public routes
-// router.post('/register', authController.register);
-// router.post('/login', authController.login);
-// router.post('/logout', authController.logout);
-
-// // Protected routes
-// router.get('/profile', authenticate, authController.getProfile);
-// router.put('/update-profile', authenticate, authController.updateProfile);
-
-// // Admin only routes
-// router.post('/create-auditor', authenticate, requireAdmin, authController.createAuditor);
-// router.get('/users', authenticate, requireAdmin, authController.listUsers);
-// router.patch('/users/:id/status', authenticate, requireAdmin, authController.toggleUserStatus);
-
-// export default router;
-
-
-// src/routes/authRoutes.ts
 import { Router } from 'express';
 import * as authController from '../controllers/authController';
-import { authenticate, requireAdmin } from '../middleware/auth';
+import {
+  authenticate,
+  requireAdmin,
+  requireAuditor,
+  requireAdminOrAuditor,
+  checkPasswordChangeRequired,
+  denyAuditor
+} from '../middleware/auth';
 
 const router = Router();
 
@@ -57,6 +40,7 @@ router.post('/logout', authController.logout);
 
 // ============================================
 // PROTECTED ROUTES (Authentication required)
+// Available to all authenticated users
 // ============================================
 
 /**
@@ -87,6 +71,8 @@ router.put('/force-change-password', authenticate, authController.forceChangePas
 
 // ============================================
 // ADMIN ONLY ROUTES
+// These routes are ONLY accessible by admin users
+// Auditors will receive 403 Forbidden if they try to access
 // ============================================
 
 /**
@@ -95,9 +81,15 @@ router.put('/force-change-password', authenticate, authController.forceChangePas
  * Auth: Required (Admin only)
  * Body: { email, password, firstName, lastName }
  * Returns: Auditor data + temporaryPassword (for admin to share)
- * Note: Sets mustChangePassword flag to true
+ * Note: Sets mustChangePassword flag to true for the new auditor
  */
-router.post('/create-auditor', authenticate, requireAdmin, authController.createAuditor);
+router.post(
+  '/create-auditor',
+  authenticate,
+  checkPasswordChangeRequired,
+  requireAdmin,
+  authController.createAuditor
+);
 
 /**
  * List all users
@@ -106,7 +98,13 @@ router.post('/create-auditor', authenticate, requireAdmin, authController.create
  * Query: page?, limit?, role?
  * Returns: Paginated list of users
  */
-router.get('/users', authenticate, requireAdmin, authController.listUsers);
+router.get(
+  '/users',
+  authenticate,
+  checkPasswordChangeRequired,
+  requireAdmin,
+  authController.listUsers
+);
 
 /**
  * Toggle user active status
@@ -116,7 +114,13 @@ router.get('/users', authenticate, requireAdmin, authController.listUsers);
  * Body: { isActive: boolean }
  * Note: Admin cannot deactivate their own account
  */
-router.patch('/users/:id/status', authenticate, requireAdmin, authController.toggleUserStatus);
+router.patch(
+  '/users/:id/status',
+  authenticate,
+  checkPasswordChangeRequired,
+  requireAdmin,
+  authController.toggleUserStatus
+);
 
 /**
  * Delete user account
@@ -125,6 +129,27 @@ router.patch('/users/:id/status', authenticate, requireAdmin, authController.tog
  * Params: id (user ID)
  * Note: Admin cannot delete their own account
  */
-router.delete('/users/:id', authenticate, requireAdmin, authController.deleteUser);
+router.delete(
+  '/users/:id',
+  authenticate,
+  checkPasswordChangeRequired,
+  requireAdmin,
+  authController.deleteUser
+);
+
+// ============================================
+// AUDITOR ONLY ROUTES
+// Add your auditor-specific routes here
+// These routes are ONLY accessible by auditor users
+// ============================================
+
+// Example: Auditor dashboard or audit-specific endpoints
+// router.get(
+//   '/auditor/dashboard',
+//   authenticate,
+//   checkPasswordChangeRequired,
+//   requireAuditor,
+//   auditorController.getDashboard
+// );
 
 export default router;
