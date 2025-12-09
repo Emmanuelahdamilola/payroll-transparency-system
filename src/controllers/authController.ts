@@ -6,12 +6,14 @@ import { UserRole } from "../types";
 import { AuthRequest } from '../types';
 import crypto from 'crypto';
 
+
+
 // Cookie configuration
 const getCookieOptions = () => ({
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: process.env.NODE_ENV === 'production' ? 'none' as const : 'lax' as const,
-  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  secure: true,
+  sameSite: "none",
+  maxAge: 7 * 24 * 60 * 60 * 1000, 
   path: "/",
 });
 
