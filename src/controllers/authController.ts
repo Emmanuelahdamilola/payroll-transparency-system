@@ -1,9 +1,10 @@
-// src/controllers/authController.ts
+
 import { Request, Response } from "express";
 import User from "../models/User";
 import { generateToken } from "../utils/auth";
 import { UserRole } from "../types";
 import { AuthRequest } from '../types';
+import bcrypt from 'bcryptjs';
 
 // Cookie configuration
 const getCookieOptions = () => ({
@@ -166,9 +167,11 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Update last login timestamp
-    user.lastLogin = new Date();
-    await user.save();
+    // Update last login timestamp using updateOne to avoid save conflicts with select: false fields
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { lastLogin: new Date() } }
+    );
 
     // Generate JWT token
     const token = generateToken({
@@ -190,7 +193,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
           firstName: user.firstName,
           lastName: user.lastName,
           role: user.role,
-          lastLogin: user.lastLogin,
+          lastLogin: new Date(), // Use the new date we just set
           mustChangePassword: user.mustChangePassword 
         },
       },
@@ -433,8 +436,44 @@ export const updateProfile = async (req: AuthRequest, res: Response): Promise<vo
         return;
       }
 
-      // Set new password (will be hashed by pre-save hook)
-      user.password = newPassword;
+      // Hash the new password
+      const salt = await bcrypt.genSalt(12);
+      const hashedPassword = await bcrypt.hash(newPassword, salt);
+      
+      // Update password using updateOne to avoid select: false issues
+      await User.updateOne(
+        { _id: userId },
+        { $set: { password: hashedPassword } }
+      );
+      
+      updated = true;
+    }
+
+    // Update name fields if provided (using updateOne if only names changed)
+    if (updated && !newPassword && (firstName || lastName)) {
+      const updateFields: any = {};
+      if (firstName && firstName.trim() !== user.firstName) {
+        updateFields.firstName = firstName.trim();
+      }
+      if (lastName && lastName.trim() !== user.lastName) {
+        updateFields.lastName = lastName.trim();
+      }
+      
+      if (Object.keys(updateFields).length > 0) {
+        await User.updateOne({ _id: userId }, { $set: updateFields });
+      }
+    } else if ((firstName && firstName.trim() !== user.firstName) || 
+               (lastName && lastName.trim() !== user.lastName)) {
+      // Only name changes, no password change
+      const updateFields: any = {};
+      if (firstName && firstName.trim() !== user.firstName) {
+        updateFields.firstName = firstName.trim();
+      }
+      if (lastName && lastName.trim() !== user.lastName) {
+        updateFields.lastName = lastName.trim();
+      }
+      
+      await User.updateOne({ _id: userId }, { $set: updateFields });
       updated = true;
     }
 
@@ -446,18 +485,27 @@ export const updateProfile = async (req: AuthRequest, res: Response): Promise<vo
       return;
     }
 
-    await user.save();
+    // Fetch updated user data
+    const updatedUser = await User.findById(userId).select('+mustChangePassword');
+    
+    if (!updatedUser) {
+      res.status(404).json({
+        success: false,
+        error: "User not found after update",
+      });
+      return;
+    }
 
     res.status(200).json({
       success: true,
       message: "Profile updated successfully",
       data: {
-        id: user._id,
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        role: user.role,
-        mustChangePassword: user.mustChangePassword,
+        id: updatedUser._id,
+        email: updatedUser.email,
+        firstName: updatedUser.firstName,
+        lastName: updatedUser.lastName,
+        role: updatedUser.role,
+        mustChangePassword: updatedUser.mustChangePassword,
       },
       timestamp: new Date().toISOString(),
     });
@@ -547,13 +595,20 @@ export const forceChangePassword = async (req: AuthRequest, res: Response): Prom
       return;
     }
 
-    // Set new password (will be hashed by pre-save hook)
-    user.password = newPassword;
-    
-    // Clear the mustChangePassword flag
-    user.mustChangePassword = false;
-    
-    await user.save();
+    // Hash the new password
+    const salt = await bcrypt.genSalt(12);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    // Update password and clear mustChangePassword flag using updateOne
+    await User.updateOne(
+      { _id: userId },
+      { 
+        $set: { 
+          password: hashedPassword,
+          mustChangePassword: false 
+        } 
+      }
+    );
 
     res.status(200).json({
       success: true,
