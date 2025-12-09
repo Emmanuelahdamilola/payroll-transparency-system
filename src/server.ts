@@ -52,7 +52,7 @@ const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
   "http://localhost:5000",
-  "https://payroll-transparency-frontend.vercel.app",
+  "https://fortipay.vercel.app/",
 
   process.env.BACKEND_URL, 
 ].filter(Boolean); 
