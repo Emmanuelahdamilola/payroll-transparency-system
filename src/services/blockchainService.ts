@@ -238,15 +238,15 @@ export const registerStaffOnChain = async (staffHash: string): Promise<{
   status: 'SUCCESS' | 'FAILED';
 }> => {
   try {
-    console.log(`\n📝 Registering staff on Stellar blockchain...`);
+    console.log(`\nRegistering staff on Stellar blockchain...`);
     console.log(`   Staff Hash: ${staffHash}`);
 
     if (!CONTRACT_ID) {
       throw new Error('SOROBAN_CONTRACT_ID not configured in .env');
     }
 
-    // ✅ CHECK IF ALREADY REGISTERED
-    console.log('   🔍 Checking if staff already registered...');
+    // CHECK IF ALREADY REGISTERED
+    console.log('   Checking if staff already registered...');
     const isRegistered = await isStaffRegisteredOnChain(staffHash);
     
     if (isRegistered) {

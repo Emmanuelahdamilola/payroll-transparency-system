@@ -1,4 +1,4 @@
-
+// src/controllers/authController.ts
 import { Request, Response } from "express";
 import User from "../models/User";
 import { generateToken } from "../utils/auth";
@@ -11,12 +11,13 @@ const getCookieOptions = () => ({
   httpOnly: true,
   secure: true, 
   sameSite: "none" as const, 
-  maxAge: 7 * 24 * 60 * 60 * 1000, 
+  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
   path: "/",
 });
 
 /**
  * Register a new user (admin/auditor)
+ * POST /api/auth/register
  */
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -59,6 +60,8 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       firstName,
       lastName,
       role: userRole,
+      isActive: true,
+      mustChangePassword: false // Self-registration = no forced change
     });
 
     // Generate JWT
@@ -97,6 +100,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
 /**
  * Login user
+ * POST /api/auth/login
  */
 export const login = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -161,6 +165,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
           lastName: user.lastName,
           role: user.role,
           lastLogin: user.lastLogin,
+          mustChangePassword: user.mustChangePassword || false // Include flag for frontend
         },
       },
       timestamp: new Date().toISOString(),
@@ -177,6 +182,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 
 /**
  * Logout - Clear cookie
+ * POST /api/auth/logout
  */
 export const logout = (req: Request, res: Response): void => {
   // Clear cookie with same settings
@@ -190,6 +196,7 @@ export const logout = (req: Request, res: Response): void => {
 
 /**
  * Get current user profile
+ * GET /api/auth/profile
  */
 export const getProfile = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -223,6 +230,7 @@ export const getProfile = async (req: Request, res: Response): Promise<void> => 
         role: user.role,
         isActive: user.isActive,
         lastLogin: user.lastLogin,
+        mustChangePassword: user.mustChangePassword || false,
         createdAt: user.createdAt,
       },
       timestamp: new Date().toISOString(),
@@ -267,14 +275,15 @@ export const createAuditor = async (req: AuthRequest, res: Response): Promise<vo
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create auditor
+    // Create auditor with force password change flag
     const auditor = await User.create({
       email: normalizedEmail,
       password: hashedPassword,
       firstName,
       lastName,
       role: UserRole.AUDITOR,
-      isActive: true
+      isActive: true,
+      mustChangePassword: true // Force password change on first login
     });
 
     res.status(201).json({
@@ -288,6 +297,7 @@ export const createAuditor = async (req: AuthRequest, res: Response): Promise<vo
           lastName: auditor.lastName,
           role: auditor.role,
         },
+        temporaryPassword: password // Return password for admin to share
       },
       timestamp: new Date().toISOString(),
     });
@@ -346,6 +356,11 @@ export const updateProfile = async (req: AuthRequest, res: Response): Promise<vo
 
       // Hash new password
       user.password = await bcrypt.hash(newPassword, 10);
+      
+      // Clear mustChangePassword flag if it was set
+      if (user.mustChangePassword) {
+        user.mustChangePassword = false;
+      }
     }
 
     await user.save();
@@ -359,6 +374,7 @@ export const updateProfile = async (req: AuthRequest, res: Response): Promise<vo
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
+        mustChangePassword: user.mustChangePassword || false
       },
       timestamp: new Date().toISOString(),
     });
@@ -367,6 +383,78 @@ export const updateProfile = async (req: AuthRequest, res: Response): Promise<vo
     res.status(500).json({
       success: false,
       error: "Failed to update profile",
+      message: error.message,
+    });
+  }
+};
+
+/**
+ * Force password change (for temporary passwords)
+ * PUT /api/auth/force-change-password
+ */
+export const forceChangePassword = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user!.id;
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      res.status(400).json({
+        success: false,
+        error: "Both current and new password are required",
+      });
+      return;
+    }
+
+    // Validate new password strength
+    if (newPassword.length < 8) {
+      res.status(400).json({
+        success: false,
+        error: "New password must be at least 8 characters long",
+      });
+      return;
+    }
+
+    const user = await User.findById(userId).select('+password');
+
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        error: "User not found",
+      });
+      return;
+    }
+
+    // Verify current (temporary) password
+    const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
+    if (!isPasswordValid) {
+      res.status(401).json({
+        success: false,
+        error: "Current password is incorrect",
+      });
+      return;
+    }
+
+    // Hash new password
+    user.password = await bcrypt.hash(newPassword, 10);
+    
+    // Clear the mustChangePassword flag
+    user.mustChangePassword = false;
+    
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Password changed successfully. You can now access the system.",
+      data: {
+        mustChangePassword: false
+      },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    console.error("Force change password error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to change password",
       message: error.message,
     });
   }
@@ -473,6 +561,54 @@ export const toggleUserStatus = async (req: AuthRequest, res: Response): Promise
     res.status(500).json({
       success: false,
       error: "Failed to update user status",
+      message: error.message,
+    });
+  }
+};
+
+/**
+ * Delete user account (Admin only)
+ * DELETE /api/auth/users/:id
+ */
+export const deleteUser = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    // Prevent admin from deleting themselves
+    if (id === req.user!.id) {
+      res.status(400).json({
+        success: false,
+        error: 'You cannot delete your own account'
+      });
+      return;
+    }
+
+    const user = await User.findById(id);
+
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+      return;
+    }
+
+    await User.findByIdAndDelete(id);
+
+    res.status(200).json({
+      success: true,
+      message: 'User deleted successfully',
+      data: {
+        id,
+        email: user.email
+      },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    console.error("Delete user error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to delete user",
       message: error.message,
     });
   }
