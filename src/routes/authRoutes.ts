@@ -122,6 +122,7 @@ router.patch(
   authController.toggleUserStatus
 );
 
+
 /**
  * Delete user account
  * DELETE /api/auth/users/:id

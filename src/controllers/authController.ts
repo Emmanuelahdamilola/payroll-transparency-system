@@ -4,9 +4,6 @@ import User from "../models/User";
 import { generateToken } from "../utils/auth";
 import { UserRole } from "../types";
 import { AuthRequest } from '../types';
-import crypto from 'crypto';
-
-
 
 // Cookie configuration
 const getCookieOptions = () => ({
@@ -16,23 +13,6 @@ const getCookieOptions = () => ({
   maxAge: 7 * 24 * 60 * 60 * 1000, 
   path: "/",
 });
-
-/**
- * Generate secure temporary password
- * Uses crypto for cryptographically secure random generation
- */
-const generateTemporaryPassword = (): string => {
-  const length = 12;
-  const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
-  let password = '';
-  
-  for (let i = 0; i < length; i++) {
-    const randomIndex = crypto.randomInt(0, charset.length);
-    password += charset[randomIndex];
-  }
-  
-  return password;
-};
 
 /**
  * Register a new user (admin only - auditors cannot self-register)
@@ -100,7 +80,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       lastName: lastName.trim(),
       role: UserRole.ADMIN,
       isActive: true,
-      mustChangePassword: false // Self-registered admins don't need to change password
+      mustChangePassword: false
     });
 
     // Generate JWT token
@@ -141,94 +121,6 @@ export const register = async (req: Request, res: Response): Promise<void> => {
  * Login user
  * POST /api/auth/login
  */
-// export const login = async (req: Request, res: Response): Promise<void> => {
-//   try {
-//     const { email, password } = req.body;
-
-//     // Validation
-//     if (!email || !password) {
-//       res.status(400).json({
-//         success: false,
-//         error: "Please provide email and password",
-//       });
-//       return;
-//     }
-
-//     // Find user and explicitly select password and mustChangePassword fields
-//     const user = await User.findOne({ email: email.toLowerCase().trim() })
-//       .select("+password");
-
-//     if (!user) {
-//       res.status(401).json({
-//         success: false,
-//         error: "Invalid credentials",
-//       });
-//       return;
-//     }
-
-//     // Check if account is active
-//     if (!user.isActive) {
-//       res.status(403).json({
-//         success: false,
-//         error: "Account is deactivated. Contact administrator.",
-//       });
-//       return;
-//     }
-
-//     // Verify password using model method
-//     const isPasswordValid = await user.comparePassword(password);
-
-//     if (!isPasswordValid) {
-//       res.status(401).json({
-//         success: false,
-//         error: "Invalid credentials",
-//       });
-//       return;
-//     }
-
-//     // Update last login timestamp
-//     user.lastLogin = new Date();
-//     await user.save();
-
-//     // Generate JWT token
-//     const token = generateToken({
-//       id: user._id.toString(),
-//       email: user.email,
-//       role: user.role,
-//     });
-
-//     // Set authentication cookie
-//     res.cookie("token", token, getCookieOptions());
-
-//     res.status(200).json({
-//       success: true,
-//       message: "Login successful",
-//       data: {
-//         user: {
-//           id: user._id,
-//           email: user.email,
-//           firstName: user.firstName,
-//           lastName: user.lastName,
-//           role: user.role,
-//           lastLogin: user.lastLogin,
-//           mustChangePassword: user.mustChangePassword // Critical: Include this flag
-//         },
-//       },
-//       timestamp: new Date().toISOString(),
-//     });
-//   } catch (error: any) {
-//     console.error("Login error:", error);
-//     res.status(500).json({
-//       success: false,
-//       error: "Login failed",
-//       message: process.env.NODE_ENV === 'development' ? error.message : undefined,
-//     });
-//   }
-// };
-
-
-// Fix for the login function - line ~140
-
 export const login = async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password } = req.body;
@@ -244,7 +136,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 
     // Find user and explicitly select password AND mustChangePassword fields
     const user = await User.findOne({ email: email.toLowerCase().trim() })
-      .select("+password +mustChangePassword"); // ← Add +mustChangePassword here!
+      .select("+password +mustChangePassword");
 
     if (!user) {
       res.status(401).json({
@@ -299,7 +191,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
           lastName: user.lastName,
           role: user.role,
           lastLogin: user.lastLogin,
-          mustChangePassword: user.mustChangePassword // Now this will be included!
+          mustChangePassword: user.mustChangePassword 
         },
       },
       timestamp: new Date().toISOString(),
@@ -344,8 +236,6 @@ export const getProfile = async (req: AuthRequest, res: Response): Promise<void>
       return;
     }
 
-    // const user = await User.findById(userId);
-
     const user = await User.findById(userId).select('+mustChangePassword');
 
     if (!user) {
@@ -385,16 +275,26 @@ export const getProfile = async (req: AuthRequest, res: Response): Promise<void>
 /**
  * Create auditor account (Admin only)
  * POST /api/auth/create-auditor
+ * Admin provides the password that will be given to the auditor
  */
 export const createAuditor = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { email, firstName, lastName } = req.body;
+    const { email, password, firstName, lastName } = req.body;
 
     // Validation
-    if (!email || !firstName || !lastName) {
+    if (!email || !password || !firstName || !lastName) {
       res.status(400).json({
         success: false,
-        error: "Missing required fields (email, firstName, lastName)",
+        error: "Missing required fields (email, password, firstName, lastName)",
+      });
+      return;
+    }
+
+    // Password strength validation
+    if (password.length < 8) {
+      res.status(400).json({
+        success: false,
+        error: "Password must be at least 8 characters long",
       });
       return;
     }
@@ -421,18 +321,15 @@ export const createAuditor = async (req: AuthRequest, res: Response): Promise<vo
       return;
     }
 
-    // Generate cryptographically secure temporary password
-    const temporaryPassword = generateTemporaryPassword();
-
     // Create auditor (password will be hashed by pre-save hook)
     const auditor = await User.create({
       email: normalizedEmail,
-      password: temporaryPassword,
+      password,
       firstName: firstName.trim(),
       lastName: lastName.trim(),
       role: UserRole.AUDITOR,
       isActive: true,
-      mustChangePassword: true // Force password change on first login
+      mustChangePassword: true 
     });
 
     res.status(201).json({
@@ -448,8 +345,7 @@ export const createAuditor = async (req: AuthRequest, res: Response): Promise<vo
           isActive: auditor.isActive,
           mustChangePassword: auditor.mustChangePassword,
         },
-        temporaryPassword, // Return this for admin to share with auditor
-        note: "User must change password on first login"
+        note: "Auditor must change password on first login. Please provide the password to the auditor securely."
       },
       timestamp: new Date().toISOString(),
     });
@@ -475,7 +371,6 @@ export const updateProfile = async (req: AuthRequest, res: Response): Promise<vo
     const { firstName, lastName, currentPassword, newPassword } = req.body;
 
     // Find user with password field
-    // const user = await User.findById(userId).select('+password');
     const user = await User.findById(userId).select('+password +mustChangePassword');
 
     if (!user) {
@@ -577,113 +472,9 @@ export const updateProfile = async (req: AuthRequest, res: Response): Promise<vo
 };
 
 /**
- * Force password change (for auditors with temporary passwords only)
+ * Force password change (for auditors with initial passwords)
  * PUT /api/auth/force-change-password
- * This endpoint is specifically for auditors who were created by admin
- */
-// export const forceChangePassword = async (req: AuthRequest, res: Response): Promise<void> => {
-//   try {
-//     const userId = req.user!.id;
-//     const { currentPassword, newPassword } = req.body;
-
-//     // Validation
-//     if (!currentPassword || !newPassword) {
-//       res.status(400).json({
-//         success: false,
-//         error: "Both current and new passwords are required",
-//       });
-//       return;
-//     }
-
-//     // Validate new password strength
-//     if (newPassword.length < 8) {
-//       res.status(400).json({
-//         success: false,
-//         error: "New password must be at least 8 characters long",
-//       });
-//       return;
-//     }
-
-//     // Ensure new password is different from current
-//     if (currentPassword === newPassword) {
-//       res.status(400).json({
-//         success: false,
-//         error: "New password must be different from current password",
-//       });
-//       return;
-//     }
-
-//     // Find user with password field
-//     const user = await User.findById(userId).select('+password');
-
-//     if (!user) {
-//       res.status(404).json({
-//         success: false,
-//         error: "User not found",
-//       });
-//       return;
-//     }
-
-//     // Only auditors with mustChangePassword flag should use this endpoint
-//     if (!user.mustChangePassword) {
-//       res.status(400).json({
-//         success: false,
-//         error: "You don't need to force change your password. Use /api/auth/update-profile instead.",
-//       });
-//       return;
-//     }
-
-//     // Additional check: Only auditors should have mustChangePassword flag
-//     if (user.role !== UserRole.AUDITOR) {
-//       res.status(403).json({
-//         success: false,
-//         error: "This endpoint is only for auditors with temporary passwords",
-//       });
-//       return;
-//     }
-
-//     // Verify current (temporary) password
-//     const isPasswordValid = await user.comparePassword(currentPassword);
-//     if (!isPasswordValid) {
-//       res.status(401).json({
-//         success: false,
-//         error: "Current password is incorrect",
-//       });
-//       return;
-//     }
-
-//     // Set new password (will be hashed by pre-save hook)
-//     user.password = newPassword;
-    
-//     // Clear the mustChangePassword flag
-//     user.mustChangePassword = false;
-    
-//     await user.save();
-
-//     res.status(200).json({
-//       success: true,
-//       message: "Password changed successfully. You now have full access to the system.",
-//       data: {
-//         mustChangePassword: false,
-//       },
-//       timestamp: new Date().toISOString(),
-//     });
-//   } catch (error: any) {
-//     console.error("Force change password error:", error);
-//     res.status(500).json({
-//       success: false,
-//       error: "Failed to change password",
-//       message: process.env.NODE_ENV === 'development' ? error.message : undefined,
-//     });
-//   }
-// };
-
-
-
-/**
- * Force password change (for auditors with temporary passwords only)
- * PUT /api/auth/force-change-password
- * This endpoint is specifically for auditors who were created by admin
+ * This endpoint is specifically for auditors who need to change their admin-provided password
  */
 export const forceChangePassword = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -717,7 +508,7 @@ export const forceChangePassword = async (req: AuthRequest, res: Response): Prom
       return;
     }
 
-    // Find user with password AND mustChangePassword fields - THIS IS THE FIX!
+    // Find user with password AND mustChangePassword fields
     const user = await User.findById(userId).select('+password +mustChangePassword');
 
     if (!user) {
@@ -728,7 +519,7 @@ export const forceChangePassword = async (req: AuthRequest, res: Response): Prom
       return;
     }
 
-    // Only auditors with mustChangePassword flag should use this endpoint
+    // Only users with mustChangePassword flag should use this endpoint
     if (!user.mustChangePassword) {
       res.status(400).json({
         success: false,
@@ -741,12 +532,12 @@ export const forceChangePassword = async (req: AuthRequest, res: Response): Prom
     if (user.role !== UserRole.AUDITOR) {
       res.status(403).json({
         success: false,
-        error: "This endpoint is only for auditors with temporary passwords",
+        error: "This endpoint is only for auditors with initial passwords",
       });
       return;
     }
 
-    // Verify current (temporary) password
+    // Verify current password
     const isPasswordValid = await user.comparePassword(currentPassword);
     if (!isPasswordValid) {
       res.status(401).json({
@@ -781,6 +572,7 @@ export const forceChangePassword = async (req: AuthRequest, res: Response): Prom
     });
   }
 };
+
 /**
  * List all users (Admin only)
  * GET /api/auth/users
