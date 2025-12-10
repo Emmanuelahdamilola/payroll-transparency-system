@@ -1,15 +1,14 @@
+
 import {
   Keypair,
   Networks,
   TransactionBuilder,
   Contract,
-  Address,
   xdr,
   SorobanRpc,
   BASE_FEE,
   nativeToScVal,
   scValToNative,
-  Memo
 } from '@stellar/stellar-sdk';
 
 import config from '../config/env';
@@ -35,9 +34,7 @@ const getNetworkPassphrase = (): string => {
 let sourceKeypair: Keypair;
 try {
   sourceKeypair = Keypair.fromSecret(config.STELLAR_SECRET_KEY);
-  console.log(`✅ Stellar account initialized: ${sourceKeypair.publicKey()}`);
 } catch (error) {
-  console.error('❌ Failed to initialize Stellar keypair');
   throw new Error('Invalid STELLAR_SECRET_KEY in .env file');
 }
 
@@ -48,26 +45,54 @@ if (!CONTRACT_ID) {
 }
 
 /**
- * Convert hex string to Buffer (32 bytes) - matches Ethereum bytes32
- * Your Ethereum code: const bytes32Hash = '0x' + staffHash;
+ * Create BytesN<32> ScVal from hex string
  */
-const hexToBytes32 = (hexString: string): Buffer => {
-  // Remove '0x' prefix if present
+const createBytes32ScVal = (hexString: string): xdr.ScVal => {
   let cleanHex = hexString.replace(/^0x/, '');
-  
-  // Pad to 64 characters (32 bytes) if needed
   cleanHex = cleanHex.padStart(64, '0');
   
   if (cleanHex.length !== 64) {
-    throw new Error(`Invalid hex string length: ${cleanHex.length}, expected 64`);
+    throw new Error(`Invalid hex length: ${cleanHex.length}, expected 64`);
   }
   
-  return Buffer.from(cleanHex, 'hex');
+  const buffer = Buffer.from(cleanHex, 'hex');
+  return xdr.ScVal.scvBytes(buffer);
 };
 
 /**
- * Build and submit a transaction (matches your Ethereum flow)
- * Your Ethereum code: tx.wait() → Wait for confirmation
+ * Verify transaction in background (non-blocking)
+ */
+const verifyTransactionInBackground = async (txHash: string): Promise<void> => {
+  try {
+    let attempts = 0;
+    const maxAttempts = 10;
+    
+    while (attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      attempts++;
+      
+      try {
+        const response = await server.getTransaction(txHash);
+        
+        if (response.status === SorobanRpc.Api.GetTransactionStatus.SUCCESS) {
+          return;
+        }
+        
+        if (response.status === SorobanRpc.Api.GetTransactionStatus.FAILED) {
+          console.error(`Transaction failed: ${txHash}`);
+          return;
+        }
+      } catch (error) {
+        continue;
+      }
+    }
+  } catch (error) {
+    // Silent fail
+  }
+};
+
+/**
+ * Build and submit a transaction - FAST MODE
  */
 const submitTransaction = async (
   operation: xdr.Operation
@@ -77,101 +102,47 @@ const submitTransaction = async (
   status: 'SUCCESS' | 'FAILED';
 }> => {
   try {
-    // Get source account (like getting wallet in Ethereum)
     const sourceAccount = await server.getAccount(sourceKeypair.publicKey());
     
-    // Build transaction (like TransactionBuilder in Ethereum)
-    const transaction = new TransactionBuilder(sourceAccount, {
-      fee: BASE_FEE,
+    const builtTransaction = new TransactionBuilder(sourceAccount, {
+      fee: (parseInt(BASE_FEE) * 100).toString(),
       networkPassphrase: getNetworkPassphrase(),
     })
       .addOperation(operation)
       .setTimeout(30)
       .build();
 
-    console.log('   📤 Simulating transaction...');
+    const simulation = await server.simulateTransaction(builtTransaction);
+
+    if (SorobanRpc.Api.isSimulationError(simulation)) {
+      throw new Error(`Simulation failed: ${simulation.error}`);
+    }
+
+    if (!SorobanRpc.Api.isSimulationSuccess(simulation)) {
+      throw new Error('Simulation failed');
+    }
+
+    const assembledTx = SorobanRpc.assembleTransaction(
+      builtTransaction,
+      simulation
+    ).build();
+
+    assembledTx.sign(sourceKeypair);
     
-    // Simulate first (Stellar requirement, not in Ethereum)
-    const simulated = await server.simulateTransaction(transaction);
-
-    if (SorobanRpc.Api.isSimulationError(simulated)) {
-      throw new Error(`Simulation failed: ${simulated.error}`);
-    }
-
-    if (!SorobanRpc.Api.isSimulationSuccess(simulated)) {
-      throw new Error('Simulation failed with unknown error');
-    }
-
-    console.log('   ✅ Simulation successful');
-    console.log('   📝 Preparing transaction...');
-
-    // Assemble transaction with simulation results
-    const preparedTx = SorobanRpc.assembleTransaction(transaction, simulated).build();
-
-    // Sign transaction (like wallet.signTransaction in Ethereum)
-    preparedTx.sign(sourceKeypair);
-
-    console.log('   📡 Sending transaction...');
-
-    // Submit transaction (like provider.sendTransaction in Ethereum)
-    const sendResponse = await server.sendTransaction(preparedTx);
+    const sendResponse = await server.sendTransaction(assembledTx);
 
     if (sendResponse.status === 'ERROR') {
-      throw new Error(`Transaction failed: ${JSON.stringify(sendResponse)}`);
+      throw new Error(`Failed to send transaction: ${sendResponse.errorResult?.toXDR('base64')}`);
     }
 
-    console.log(`   ⏳ Transaction sent: ${sendResponse.hash}`);
-    console.log('   ⏳ Waiting for confirmation...');
-
-    // Poll for result (like tx.wait() in Ethereum)
-    let attempts = 0;
-    const maxAttempts = 15; // Reduced from 30
-
-    while (attempts < maxAttempts) {
-      try {
-        const getResponse = await server.getTransaction(sendResponse.hash);
-        
-        if (getResponse.status === SorobanRpc.Api.GetTransactionStatus.SUCCESS) {
-          console.log(`   ✅ Transaction confirmed in ~${attempts * 0.5}s!`);
-          return {
-            transactionHash: sendResponse.hash,
-            ledger: getResponse.ledger || 0,
-            status: 'SUCCESS'
-          };
-        }
-        
-        if (getResponse.status === SorobanRpc.Api.GetTransactionStatus.FAILED) {
-          throw new Error(`Transaction failed on chain`);
-        }
-        
-        // Still not found, keep polling
-        if (getResponse.status === SorobanRpc.Api.GetTransactionStatus.NOT_FOUND) {
-          attempts++;
-          await new Promise(resolve => setTimeout(resolve, 500)); // 500ms instead of 1000ms
-          continue;
-        }
-      } catch (error: any) {
-        // Handle parsing errors - assume success after reasonable attempts
-        if (error.message.includes('Bad union switch')) {
-          attempts++;
-          if (attempts > 5) {
-            // After 5 attempts with parsing errors, assume success
-            console.log(`   ⚠️  Transaction likely successful (parsing issue)`);
-            return {
-              transactionHash: sendResponse.hash,
-              ledger: 0,
-              status: 'SUCCESS'
-            };
-          }
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          continue;
-        }
-        throw error;
-      }
-    }
-
-    // If we get here, assume success (transaction was sent)
-    console.log(`   ⚠️  Transaction sent but status unclear. Check explorer.`);
+    // FAST MODE: Return immediately after broadcast
+    // Transaction will confirm on-chain in 5-10 seconds
+    
+    // Optional: Start background verification (non-blocking)
+    verifyTransactionInBackground(sendResponse.hash).catch(() => {
+      // Silent fail - transaction is already broadcast
+    });
+    
     return {
       transactionHash: sendResponse.hash,
       ledger: 0,
@@ -179,14 +150,12 @@ const submitTransaction = async (
     };
     
   } catch (error: any) {
-    console.error('   ❌ Transaction error:', error.message);
     throw error;
   }
 };
 
 /**
- * Read-only contract call (for view functions)
- * Matches your Ethereum view functions like isStaffRegistered
+ * Read-only contract call
  */
 const callViewFunction = async (
   functionName: string,
@@ -217,20 +186,14 @@ const callViewFunction = async (
       }
     }
 
-    if (SorobanRpc.Api.isSimulationError(simulated)) {
-      throw new Error(`View call failed: ${simulated.error}`);
-    }
-
     return null;
   } catch (error: any) {
-    console.error(`View function ${functionName} error:`, error.message);
-    throw error;
+    return null;
   }
 };
 
 /**
  * Register staff on blockchain
- * Matches: registerStaffOnChain(staffHash) from Ethereum
  */
 export const registerStaffOnChain = async (staffHash: string): Promise<{
   transactionHash: string;
@@ -238,56 +201,29 @@ export const registerStaffOnChain = async (staffHash: string): Promise<{
   status: 'SUCCESS' | 'FAILED';
 }> => {
   try {
-    console.log(`\nRegistering staff on Stellar blockchain...`);
-    console.log(`   Staff Hash: ${staffHash}`);
-
     if (!CONTRACT_ID) {
       throw new Error('SOROBAN_CONTRACT_ID not configured in .env');
     }
 
-    // CHECK IF ALREADY REGISTERED
-    console.log('   Checking if staff already registered...');
     const isRegistered = await isStaffRegisteredOnChain(staffHash);
-    
     if (isRegistered) {
-      console.log('   ⚠️  Staff already registered on blockchain');
-      // Return a mock successful response
-      return {
-        transactionHash: `already_registered_${staffHash.substring(0, 16)}`,
-        ledger: 0,
-        status: 'SUCCESS'
-      };
+      throw new Error('Staff already registered on blockchain');
     }
 
-    // Convert hash to bytes32 (same as Ethereum: '0x' + staffHash)
-    const hashBytes = hexToBytes32(staffHash);
-    
-    // Create ScVal from bytes
-    const staffHashScVal = nativeToScVal(hashBytes, { type: 'bytes' });
-
-    // Create contract instance
+    const staffHashScVal = createBytes32ScVal(staffHash);
     const contract = new Contract(CONTRACT_ID);
-
-    // Build contract call operation
     const operation = contract.call('register_staff', staffHashScVal);
 
-    // Submit transaction
     const result = await submitTransaction(operation);
-
-    console.log(`\n✅ Staff registered successfully!`);
-    console.log(`   Transaction: ${result.transactionHash}`);
-    console.log(`   Ledger: ${result.ledger}`);
     
     return result;
   } catch (error: any) {
-    console.error('\n❌ Failed to register staff on blockchain:', error.message);
     throw error;
   }
 };
 
 /**
  * Check if staff is registered
- * Matches: isStaffRegisteredOnChain(staffHash) from Ethereum
  */
 export const isStaffRegisteredOnChain = async (staffHash: string): Promise<boolean> => {
   try {
@@ -295,20 +231,16 @@ export const isStaffRegisteredOnChain = async (staffHash: string): Promise<boole
       return false;
     }
 
-    const hashBytes = hexToBytes32(staffHash);
-    const staffHashScVal = nativeToScVal(hashBytes, { type: 'bytes' });
-
+    const staffHashScVal = createBytes32ScVal(staffHash);
     const result = await callViewFunction('is_staff_registered', staffHashScVal);
     return result === true;
   } catch (error: any) {
-    console.error('Check staff registered error:', error.message);
     return false;
   }
 };
 
 /**
  * Check if staff is active
- * Matches: isStaffActiveOnChain(staffHash) from Ethereum
  */
 export const isStaffActiveOnChain = async (staffHash: string): Promise<boolean> => {
   try {
@@ -316,55 +248,43 @@ export const isStaffActiveOnChain = async (staffHash: string): Promise<boolean> 
       return false;
     }
 
-    const hashBytes = hexToBytes32(staffHash);
-    const staffHashScVal = nativeToScVal(hashBytes, { type: 'bytes' });
-
+    const staffHashScVal = createBytes32ScVal(staffHash);
     const result = await callViewFunction('is_staff_active', staffHashScVal);
     return result === true;
   } catch (error: any) {
-    console.error('Check staff active error:', error.message);
     return false;
   }
 };
 
 /**
  * Revoke staff
- * Matches: revokeStaffOnChain(staffHash) from Ethereum
  */
 export const revokeStaffOnChain = async (staffHash: string): Promise<{
   transactionHash: string;
   ledger: number;
 }> => {
   try {
-    console.log(`\n⛔ Revoking staff on blockchain...`);
-    
     if (!CONTRACT_ID) {
       throw new Error('Contract ID not configured');
     }
 
-    const hashBytes = hexToBytes32(staffHash);
-    const staffHashScVal = nativeToScVal(hashBytes, { type: 'bytes' });
-
+    const staffHashScVal = createBytes32ScVal(staffHash);
     const contract = new Contract(CONTRACT_ID);
     const operation = contract.call('revoke_staff', staffHashScVal);
 
     const result = await submitTransaction(operation);
-    
-    console.log(`✅ Staff revoked successfully!`);
     
     return {
       transactionHash: result.transactionHash,
       ledger: result.ledger
     };
   } catch (error: any) {
-    console.error('Revoke staff error:', error.message);
     throw error;
   }
 };
 
 /**
  * Record payroll batch
- * Matches: recordPayrollBatchOnChain(batchHash, staffCount) from Ethereum
  */
 export const recordPayrollBatchOnChain = async (
   batchHash: string,
@@ -375,32 +295,11 @@ export const recordPayrollBatchOnChain = async (
   status: 'SUCCESS' | 'FAILED';
 }> => {
   try {
-    console.log(`\n📝 Recording payroll batch on blockchain...`);
-    console.log(`   Batch Hash: ${batchHash}`);
-    console.log(`   Staff Count: ${staffCount}`);
-
     if (!CONTRACT_ID) {
       throw new Error('Contract ID not configured');
     }
 
-    // ✅ CHECK IF ALREADY RECORDED
-    console.log('   🔍 Checking if batch already recorded...');
-    const isRecorded = await isBatchRecordedOnChain(batchHash);
-    
-    if (isRecorded) {
-      console.log('   ⚠️  Batch already recorded on blockchain');
-      console.log('   ℹ️  Skipping duplicate recording (this is normal)');
-      
-      // Return a mock successful response to indicate it's already on chain
-      return {
-        transactionHash: `already_recorded_${batchHash.substring(0, 16)}`,
-        ledger: 0,
-        status: 'SUCCESS'
-      };
-    }
-
-    const hashBytes = hexToBytes32(batchHash);
-    const batchHashScVal = nativeToScVal(hashBytes, { type: 'bytes' });
+    const batchHashScVal = createBytes32ScVal(batchHash);
     const staffCountScVal = nativeToScVal(staffCount, { type: 'u32' });
 
     const contract = new Contract(CONTRACT_ID);
@@ -411,20 +310,15 @@ export const recordPayrollBatchOnChain = async (
     );
 
     const result = await submitTransaction(operation);
-
-    console.log(`\n✅ Payroll batch recorded successfully!`);
-    console.log(`   Transaction: ${result.transactionHash}`);
     
     return result;
   } catch (error: any) {
-    console.error('\n❌ Failed to record batch:', error.message);
     throw error;
   }
 };
 
 /**
  * Get staff record from blockchain
- * Matches: getStaffRecordFromChain(staffHash) from Ethereum
  */
 export const getStaffRecordFromChain = async (staffHash: string) => {
   try {
@@ -432,10 +326,12 @@ export const getStaffRecordFromChain = async (staffHash: string) => {
       throw new Error('Contract ID not configured');
     }
 
-    const hashBytes = hexToBytes32(staffHash);
-    const staffHashScVal = nativeToScVal(hashBytes, { type: 'bytes' });
-
+    const staffHashScVal = createBytes32ScVal(staffHash);
     const result = await callViewFunction('get_staff_record', staffHashScVal);
+    
+    if (!result) {
+      throw new Error('Staff record not found');
+    }
     
     return {
       staffHash: result.staff_hash,
@@ -444,14 +340,12 @@ export const getStaffRecordFromChain = async (staffHash: string) => {
       isActive: result.is_active
     };
   } catch (error: any) {
-    console.error('Get staff record error:', error.message);
     throw error;
   }
 };
 
 /**
  * Get total staff count
- * Matches: getTotalStaffOnChain() from Ethereum
  */
 export const getTotalStaffOnChain = async (): Promise<number> => {
   try {
@@ -462,7 +356,6 @@ export const getTotalStaffOnChain = async (): Promise<number> => {
     const result = await callViewFunction('get_total_staff');
     return Number(result) || 0;
   } catch (error: any) {
-    console.error('Get total staff error:', error.message);
     return 0;
   }
 };
@@ -476,15 +369,34 @@ export const isBatchRecordedOnChain = async (batchHash: string): Promise<boolean
       return false;
     }
 
-    const hashBytes = hexToBytes32(batchHash);
-    const batchHashScVal = nativeToScVal(hashBytes, { type: 'bytes' });
-
+    const batchHashScVal = createBytes32ScVal(batchHash);
     const result = await callViewFunction('is_batch_recorded', batchHashScVal);
     return result === true;
   } catch (error: any) {
-    console.error('Check batch recorded error:', error.message);
     return false;
   }
+};
+
+/**
+ * Verify a transaction succeeded by checking contract state
+ */
+export const verifyStaffRegistration = async (
+  staffHash: string,
+  maxRetries: number = 5
+): Promise<boolean> => {
+  for (let i = 0; i < maxRetries; i++) {
+    const isRegistered = await isStaffRegisteredOnChain(staffHash);
+    
+    if (isRegistered) {
+      return true;
+    }
+    
+    if (i < maxRetries - 1) {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+  }
+  
+  return false;
 };
 
 export default {
@@ -495,5 +407,6 @@ export default {
   recordPayrollBatchOnChain,
   getStaffRecordFromChain,
   getTotalStaffOnChain,
-  isBatchRecordedOnChain
+  isBatchRecordedOnChain,
+  verifyStaffRegistration,
 };
