@@ -1,16 +1,19 @@
 import mongoose from 'mongoose';
 import config from './env';
 
+// Add this temporarily to database.ts
+console.log('MongoDB URI:', process.env.MONGODB_URI?.replace(/\/\/([^:]+):([^@]+)@/, '//$1:****@'));
+
 export const connectDatabase = async (): Promise<void> => {
   try {
-    const options = {
-      autoIndex: true,
-      maxPoolSize: 10,
-      serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 45000,
-    };
+    // const options = {
+    //   autoIndex: true,
+    //   maxPoolSize: 10,
+    //   serverSelectionTimeoutMS: 000,
+    //   socketTimeoutMS: 45000,
+    // };
 
-    await mongoose.connect(config.MONGODB_URI, options);
+    await mongoose.connect(config.MONGODB_URI);
     
     console.log('MongoDB connected successfully');
     console.log(`Database: ${mongoose.connection.name}`);
