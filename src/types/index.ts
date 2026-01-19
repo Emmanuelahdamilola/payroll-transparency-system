@@ -16,6 +16,7 @@ export interface EnvConfig {
 
 // User roles
 export enum UserRole {
+  SUPERADMIN = 'superadmin',
   ADMIN = 'admin',
   AUDITOR = 'auditor'
 }
@@ -64,7 +65,7 @@ export interface PayrollRecord {
   staffHash: string;
   salary: number;
   status: PayrollStatus;
-  flags: string[]; // References to Flag IDs
+  flags: string[]; 
 }
 
 // Batch status
@@ -115,7 +116,7 @@ export interface Flag {
   payrollId: string;
   staffHash: string;
   type: FlagType;
-  score: number; // Confidence score 0-1
+  score: number; 
   reason: string;
   explanation: string;
   metadata?: Record<string, any>;
@@ -126,6 +127,53 @@ export interface Flag {
   resolutionNotes?: string;
   createdAt: Date;
   updatedAt: Date;
+}
+
+//  Activity Log Types
+export enum ActivityAction {
+  // Authentication
+  LOGIN_SUCCESS = 'LOGIN_SUCCESS',
+  LOGIN_FAILED = 'LOGIN_FAILED',
+  LOGOUT = 'LOGOUT',
+  PASSWORD_CHANGED = 'PASSWORD_CHANGED',
+  
+  // User Management
+  USER_CREATED = 'USER_CREATED',
+  USER_UPDATED = 'USER_UPDATED',
+  USER_DELETED = 'USER_DELETED',
+  USER_STATUS_CHANGED = 'USER_STATUS_CHANGED',
+  
+  // Staff Management
+  STAFF_CREATED = 'STAFF_CREATED',
+  STAFF_UPDATED = 'STAFF_UPDATED',
+  STAFF_STATUS_CHANGED = 'STAFF_STATUS_CHANGED',
+  
+  // Payroll Operations
+  PAYROLL_UPLOADED = 'PAYROLL_UPLOADED',
+  PAYROLL_APPROVED = 'PAYROLL_APPROVED',
+  PAYROLL_REJECTED = 'PAYROLL_REJECTED',
+  PAYROLL_FLAGGED = 'PAYROLL_FLAGGED',
+  
+  // Blockchain Operations
+  BLOCKCHAIN_TX_RECORDED = 'BLOCKCHAIN_TX_RECORDED',
+  BLOCKCHAIN_TX_FAILED = 'BLOCKCHAIN_TX_FAILED',
+  
+  // System
+  SYSTEM_CONFIG_CHANGED = 'SYSTEM_CONFIG_CHANGED',
+  AUDIT_LOG_VIEWED = 'AUDIT_LOG_VIEWED'
+}
+
+export enum ActivityStatus {
+  SUCCESS = 'success',
+  FAILED = 'failed'
+}
+
+export enum EntityType {
+  USER = 'user',
+  STAFF = 'staff',
+  PAYROLL = 'payroll',
+  BLOCKCHAIN = 'blockchain',
+  SYSTEM = 'system'
 }
 
 // API Response wrapper
@@ -178,7 +226,7 @@ export const VALIDATION_RULES = {
   BVN_LENGTH: 11,
   NIN_LENGTH: 11,
   SALARY_MIN: 0,
-  SALARY_MAX: 100000000, // 100 million
+  SALARY_MAX: 100000000, 
   PAGINATION_MAX_LIMIT: 100,
   PAGINATION_DEFAULT_LIMIT: 10
 } as const;
