@@ -1,4 +1,3 @@
-
 import { Response, NextFunction } from 'express';
 import { AuthRequest, UserRole } from '../types';
 import { verifyToken } from '../utils/auth';
@@ -16,7 +15,7 @@ export const authenticate = async (
   try {
     // Debug logging (remove in production)
     if (process.env.NODE_ENV === 'development') {
-      console.log('🔐 Auth Middleware Debug:');
+      console.log('🔍 Auth Middleware Debug:');
       console.log('  - Cookies:', req.cookies);
       console.log('  - Token from cookie:', req.cookies?.token ? 'EXISTS' : 'MISSING');
       console.log('  - Auth header:', req.headers.authorization ? 'EXISTS' : 'MISSING');
@@ -145,6 +144,12 @@ export const checkPasswordChangeRequired = async (
       return;
     }
 
+    // SuperAdmins bypass password change requirement
+    if (req.user.role === UserRole.SUPERADMIN) {
+      next();
+      return;
+    }
+
     // Skip check for password change endpoints and profile view
     const allowedPaths = [
       '/api/auth/force-change-password',
@@ -186,6 +191,12 @@ export const checkPasswordChangeRequired = async (
 };
 
 /**
+ * 🆕 Middleware to check if user is SuperAdmin
+ * Shorthand for authorize(UserRole.SUPERADMIN)
+ */
+export const requireSuperAdmin = authorize(UserRole.SUPERADMIN);
+
+/**
  * Middleware to check if user is admin
  * Shorthand for authorize(UserRole.ADMIN)
  */
@@ -202,6 +213,12 @@ export const requireAuditor = authorize(UserRole.AUDITOR);
  * Allows both roles to access the endpoint
  */
 export const requireAdminOrAuditor = authorize(UserRole.ADMIN, UserRole.AUDITOR);
+
+/**
+ * 🆕 Middleware to check if user is SuperAdmin or Admin
+ * Allows both SuperAdmin and Admin to access
+ */
+export const requireSuperAdminOrAdmin = authorize(UserRole.SUPERADMIN, UserRole.ADMIN);
 
 /**
  * Middleware to restrict access to admin routes from auditors
