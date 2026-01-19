@@ -8,6 +8,7 @@
     "start": "node dist/server.js",
     "dev": "ts-node src/server.ts",
     "dev:watch": "nodemon --exec ts-node src/server.ts",
+    "create-superadmin": "ts-node scripts/createSuperAdmin.ts",
     "lint": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
