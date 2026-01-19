@@ -9,6 +9,8 @@ import { generateBatchSummary } from '../services/groqService';
 import fs from 'fs';
 import Papa from 'papaparse';
 import mongoose from 'mongoose';
+import { logPayrollAction, logBlockchainAction } from '../utils/activityLogger';
+import { ActivityAction, ActivityStatus } from '../types';
 
 interface CSVRow {
   staffhash?: string;
@@ -69,7 +71,7 @@ export const uploadPayroll = async (req: AuthRequest, res: Response): Promise<vo
 
     // Read and parse CSV file
     const csvContent = fs.readFileSync(req.file.path, 'utf-8');
-    
+
     const parseResult = Papa.parse<CSVRow>(csvContent, {
       header: true,
       skipEmptyLines: true,
@@ -155,7 +157,7 @@ export const uploadPayroll = async (req: AuthRequest, res: Response): Promise<vo
       const salaryValue = typeof row.salary === 'number' ? row.salary : parseFloat(row.salary || '0');
 
       if (!staffHash || isNaN(salaryValue) || salaryValue <= 0) {
-        continue; 
+        continue;
       }
 
       // Check if staff exists in database
@@ -201,6 +203,22 @@ export const uploadPayroll = async (req: AuthRequest, res: Response): Promise<vo
       payrollRecords
     );
 
+    // 🆕 Log payroll upload
+    await logPayrollAction(
+      ActivityAction.PAYROLL_UPLOADED,
+      req.user!.id,
+      req.user!.role,
+      payrollBatch._id.toString(),
+      req,
+      {
+        batchHash,
+        totalStaff: payrollBatch.totalStaff,
+        totalAmount: payrollBatch.totalAmount,
+        flaggedCount: payrollBatch.flaggedCount,
+        month: payrollMonth,
+        year: payrollYear
+      }
+    );
     // Update payroll records with flag references
     for (const flag of detectionResult.flags) {
       const recordIndex = payrollBatch.payrollRecords.findIndex(
@@ -244,16 +262,50 @@ export const uploadPayroll = async (req: AuthRequest, res: Response): Promise<vo
       payrollBatch.blockchainTx = blockchainTx.transactionHash;
       payrollBatch.status = 'verified';
       await payrollBatch.save();
+      //  Log blockchain transaction
+      await logBlockchainAction(
+        ActivityAction.BLOCKCHAIN_TX_RECORDED,
+        req.user!.id,
+        req.user!.role,
+        blockchainTx.transactionHash,
+        req,
+        {
+          batchHash,
+          totalStaff: payrollRecords.length,
+          ledger: blockchainTx.ledger
+        },
+        ActivityStatus.SUCCESS
+      );
+
+      
+
 
     } catch (blockchainError: any) {
       console.error('Blockchain recording failed:', blockchainError);
+
+      // Log blockchain failure
+      await logBlockchainAction(
+        ActivityAction.BLOCKCHAIN_TX_FAILED,
+        req.user!.id,
+        req.user!.role,
+        batchHash,
+        req,
+        {
+          batchHash,
+          totalStaff: payrollRecords.length,
+          error: blockchainError.message
+        },
+        ActivityStatus.FAILED
+      );
+
       payrollBatch.status = 'failed';
       await payrollBatch.save();
     }
 
+
     res.status(201).json({
       success: true,
-      message: payrollBatch.blockchainTx 
+      message: payrollBatch.blockchainTx
         ? 'Payroll batch uploaded and recorded on blockchain'
         : 'Payroll batch uploaded (blockchain recording failed)',
       data: {
@@ -274,7 +326,7 @@ export const uploadPayroll = async (req: AuthRequest, res: Response): Promise<vo
     });
   } catch (error: any) {
     console.error('Payroll upload error:', error);
-    
+
     // Clean up file if it exists
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
@@ -334,7 +386,7 @@ export const listPayrollBatches = async (req: AuthRequest, res: Response): Promi
 
     const batches = await PayrollBatch.find()
       .populate('uploadedBy', 'firstName lastName email')
-      .select('-payrollRecords') 
+      .select('-payrollRecords')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
