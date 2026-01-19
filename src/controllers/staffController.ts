@@ -6,6 +6,8 @@ import { encrypt, decrypt } from '../utils/encryption';
 import { registerStaffOnChain } from '../services/blockchainService';
 import { AuthRequest } from '../types';
 import { UserRole } from '../types';
+import { logStaffAction, logBlockchainAction } from '../utils/activityLogger';
+import { ActivityAction, ActivityStatus } from '../types';
 
 /**
  * Helper function to decrypt staff data
@@ -51,201 +53,16 @@ const decryptStaffData = (staff: any, userRole: string) => {
 const generateStaffId = async (): Promise<string> => {
   const year = new Date().getFullYear();
   const prefix = 'EKT';
-  
+
   const startOfYear = new Date(year, 0, 1);
   const count = await Staff.countDocuments({
     createdAt: { $gte: startOfYear }
   });
-  
+
   const sequence = (count + 1).toString().padStart(4, '0');
   return `${prefix}/${year}/${sequence}`;
 };
 
-/**
- * Register a new staff member
- * POST /api/staff/register
- * Access: Admin only
- */
-// export const registerStaff = async (req: AuthRequest, res: Response): Promise<void> => {
-//   try {
-//     const { 
-//       name, 
-//       dob, 
-//       bvn, 
-//       nin, 
-//       phone, 
-//       email,
-//       grade, 
-//       department,
-//       position,
-//       employmentType,
-//       hireDate,
-//       bankAccount,
-//       bankName
-//     } = req.body;
-
-//     // Validate required fields
-//     if (!name || !dob || !bvn || !nin || !phone || !grade || !department) {
-//       res.status(400).json({
-//         success: false,
-//         error: 'Missing required fields',
-//         required: ['name', 'dob', 'bvn', 'nin', 'phone', 'grade', 'department']
-//       });
-//       return;
-//     }
-
-//     // Validate email if provided
-//     if (email && !/^\S+@\S+\.\S+$/.test(email)) {
-//       res.status(400).json({
-//         success: false,
-//         error: 'Invalid email format'
-//       });
-//       return;
-//     }
-
-//     // Validate date format (YYYY-MM-DD)
-//     const dobRegex = /^\d{4}-\d{2}-\d{2}$/;
-//     if (!dobRegex.test(dob)) {
-//       res.status(400).json({
-//         success: false,
-//         error: 'Invalid date format. Use YYYY-MM-DD (e.g., 1990-05-15)'
-//       });
-//       return;
-//     }
-
-//     // Validate BVN (11 digits)
-//     if (!/^\d{11}$/.test(bvn)) {
-//       res.status(400).json({
-//         success: false,
-//         error: 'BVN must be exactly 11 digits'
-//       });
-//       return;
-//     }
-
-//     // Validate NIN (11 digits)
-//     if (!/^\d{11}$/.test(nin)) {
-//       res.status(400).json({
-//         success: false,
-//         error: 'NIN must be exactly 11 digits'
-//       });
-//       return;
-//     }
-
-//     // Generate deterministic staff hash
-//     const staffHash = generateStaffHash(name, dob, bvn, nin);
-
-//     // Check if staff already exists
-//     const existingStaff = await Staff.findOne({ staffHash });
-//     if (existingStaff) {
-//       res.status(400).json({
-//         success: false,
-//         error: 'Staff member already registered',
-//         staffHash
-//       });
-//       return;
-//     }
-
-//     // Check for duplicate BVN
-//     const bvnHash = hashField(bvn);
-//     const duplicateBVN = await Staff.findOne({ bvnHash });
-//     if (duplicateBVN) {
-//       res.status(400).json({
-//         success: false,
-//         error: 'BVN already registered to another staff member'
-//       });
-//       return;
-//     }
-
-//     // Check for duplicate NIN
-//     const ninHash = hashField(nin);
-//     const duplicateNIN = await Staff.findOne({ ninHash });
-//     if (duplicateNIN) {
-//       res.status(400).json({
-//         success: false,
-//         error: 'NIN already registered to another staff member'
-//       });
-//       return;
-//     }
-
-//     // Generate unique staff ID
-//     const staffId = await generateStaffId();
-
-//     // Encrypt sensitive PII
-//     const nameEncrypted = encrypt(name);
-//     const dobEncrypted = encrypt(dob);
-//     const phoneHash = hashField(phone);
-//     const emailEncrypted = email ? encrypt(email) : undefined;
-//     const bankAccountEncrypted = bankAccount ? encrypt(bankAccount) : undefined;
-//     const bankNameEncrypted = bankName ? encrypt(bankName) : undefined;
-
-//     // Create staff document
-//     const staff = await Staff.create({
-//       nameEncrypted,
-//       dobEncrypted,
-//       emailEncrypted,
-//       bvnHash,
-//       ninHash,
-//       phoneHash,
-//       staffHash,
-//       staffId,
-//       grade,
-//       department,
-//       position,
-//       employmentType: employmentType || 'permanent',
-//       hireDate: hireDate ? new Date(hireDate) : undefined,
-//       bankAccountEncrypted,
-//       bankNameEncrypted,
-//       blockchainTxs: [],
-//       verified: false,
-//       isActive: true,
-//       createdBy: req.user?.id
-//     });
-
-//     // Register on blockchain
-//     try {
-//       const blockchainTx = await registerStaffOnChain(staffHash);
-      
-//       staff.blockchainTxs.push(blockchainTx.transactionHash);
-//       staff.verified = true;
-//       await staff.save();
-      
-//       console.log(`✅ Staff registered on blockchain: ${blockchainTx.transactionHash}`);
-//     } catch (blockchainError: any) {
-//       console.error('⚠️ Blockchain registration failed:', blockchainError.message);
-//     }
-
-//     // ✅ Return decrypted data ONLY because this is admin-only endpoint
-//     res.status(201).json({
-//       success: true,
-//       message: staff.verified 
-//         ? 'Staff registered successfully on blockchain' 
-//         : 'Staff registered off-chain (blockchain registration failed)',
-//       data: {
-//         id: staff._id,
-//         staffId: staff.staffId,
-//         staffHash,
-//         name, // Original name (admin can see)
-//         email: email || null,
-//         grade,
-//         department,
-//         position: staff.position,
-//         employmentType: staff.employmentType,
-//         verified: staff.verified,
-//         isActive: staff.isActive,
-//         blockchainTxs: staff.blockchainTxs,
-//         createdAt: staff.createdAt
-//       },
-//       timestamp: new Date().toISOString()
-//     });
-//   } catch (error: any) {
-//     console.error('Staff registration error:', error);
-//     res.status(500).json({
-//       success: false,
-//       error: 'Staff registration failed',
-//       message: error.message
-//     });
-//   }
-// };
 
 /**
  * Register a new staff member
@@ -254,15 +71,15 @@ const generateStaffId = async (): Promise<string> => {
  */
 export const registerStaff = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { 
-      name, 
-      dob, 
-      bvn, 
-      nin, 
-      phone, 
+    const {
+      name,
+      dob,
+      bvn,
+      nin,
+      phone,
       email,
-      staffId: customStaffId, 
-      grade, 
+      staffId: customStaffId,
+      grade,
       department,
       position,
       employmentType,
@@ -401,39 +218,83 @@ export const registerStaff = async (req: AuthRequest, res: Response): Promise<vo
       createdBy: req.user?.id
     });
 
+    //  Log staff creation
+    await logStaffAction(
+      ActivityAction.STAFF_CREATED,
+      req.user!.id,
+      req.user!.role,
+      staff._id.toString(),
+      req,
+      {
+        staffHash,
+        staffId: staff.staffId,
+        name: name,
+        department: staff.department,
+        grade: staff.grade
+      }
+    );
+
     // Register on blockchain
     try {
       const blockchainTx = await registerStaffOnChain(staffHash);
-      
+
       staff.blockchainTxs.push(blockchainTx.transactionHash);
       staff.verified = true;
       await staff.save();
-      
+
+      //  Log blockchain registration
+      await logBlockchainAction(
+        ActivityAction.BLOCKCHAIN_TX_RECORDED,
+        req.user!.id,
+        req.user!.role,
+        blockchainTx.transactionHash,
+        req,
+        {
+          staffHash,
+          staffId: staff.staffId,
+          ledger: blockchainTx.ledger
+        },
+        ActivityStatus.SUCCESS
+      );
+
       console.log(`Staff registered on blockchain: ${blockchainTx.transactionHash}`);
     } catch (blockchainError: any) {
       console.error('Blockchain registration failed:', blockchainError.message);
+      // 🆕 Log blockchain failure
+      await logBlockchainAction(
+        ActivityAction.BLOCKCHAIN_TX_FAILED,
+        req.user!.id,
+        req.user!.role,
+        staffHash,
+        req,
+        {
+          staffHash,
+          error: blockchainError.message
+        },
+        ActivityStatus.FAILED
+      );
     }
 
     // Return complete data (including decrypted fields for admin)
     res.status(201).json({
       success: true,
-      message: staff.verified 
-        ? 'Staff registered successfully on blockchain' 
+      message: staff.verified
+        ? 'Staff registered successfully on blockchain'
         : 'Staff registered off-chain (blockchain registration failed)',
       data: {
         id: staff._id,
         staffId: staff.staffId,
         staffHash,
-        name, 
-        email: email || null, 
+        name,
+        email: email || null,
         dob,
         grade,
         department,
-        position: staff.position || null, 
-        employmentType: staff.employmentType, 
-        hireDate: staff.hireDate || null, 
-        bankAccount: bankAccount || null, 
-        bankName: bankName || null, 
+        position: staff.position || null,
+        employmentType: staff.employmentType,
+        hireDate: staff.hireDate || null,
+        bankAccount: bankAccount || null,
+        bankName: bankName || null,
         verified: staff.verified,
         isActive: staff.isActive,
         blockchainTxs: staff.blockchainTxs,
@@ -523,7 +384,7 @@ export const listStaff = async (req: AuthRequest, res: Response): Promise<void> 
         return {
           ...baseData,
           name: decrypted.name,
-          email: decrypted.email, 
+          email: decrypted.email,
         };
       }
 
@@ -661,6 +522,13 @@ export const updateStaff = async (req: AuthRequest, res: Response): Promise<void
       return;
     }
 
+    // Store old values for logging
+    const oldValues = {
+      grade: staff.grade,
+      department: staff.department,
+      position: staff.position
+    };
+
     // Update non-encrypted fields
     if (grade) staff.grade = grade;
     if (department) staff.department = department;
@@ -676,6 +544,37 @@ export const updateStaff = async (req: AuthRequest, res: Response): Promise<void
 
     // Decrypt for response (admin only)
     const decrypted = decryptStaffData(staff, req.user!.role);
+
+    //  Log staff update
+    const changes: any = {};
+    if (grade && grade !== oldValues.grade) {
+      changes.before = { ...changes.before, grade: oldValues.grade };
+      changes.after = { ...changes.after, grade };
+    }
+    if (department && department !== oldValues.department) {
+      changes.before = { ...changes.before, department: oldValues.department };
+      changes.after = { ...changes.after, department };
+    }
+    if (position && position !== oldValues.position) {
+      changes.before = { ...changes.before, position: oldValues.position };
+      changes.after = { ...changes.after, position };
+    }
+
+    if (Object.keys(changes).length > 0) {
+      await logStaffAction(
+        ActivityAction.STAFF_UPDATED,
+        req.user!.id,
+        req.user!.role,
+        id,
+        req,
+        {
+          staffHash: staff.staffHash,
+          ...changes
+        }
+      );
+    }
+
+
 
     res.status(200).json({
       success: true,
@@ -736,6 +635,20 @@ export const updateStaffStatus = async (req: AuthRequest, res: Response): Promis
     staff.isActive = isActive;
     staff.updatedBy = req.user!.id as any;
     await staff.save();
+
+    // Log status change
+    await logStaffAction(
+      ActivityAction.STAFF_STATUS_CHANGED,
+      req.user!.id,
+      req.user!.role,
+      id,
+      req,
+      {
+        staffHash: staff.staffHash,
+        before: { isActive: !isActive },
+        after: { isActive }
+      }
+    );
 
     // Decrypt name for response (admin only)
     const decrypted = decryptStaffData(staff, req.user!.role);
